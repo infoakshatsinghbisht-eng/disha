@@ -95,6 +95,11 @@ def train_multimodal_llm(
     optimizer = optim.AdamW(llm.parameters(), lr=lr, weight_decay=train_cfg.weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs * len(dataloader))
 
+    use_amp = (device == "cuda" or (isinstance(device, str) and device.startswith("cuda")))
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    if use_amp:
+        print("[+] Enabled Mixed Precision (FP16 AMP) for GPU acceleration.")
+
     # 5. Training Loop with Gradient Accumulation
     grad_accum_steps = 2
     llm.train()
@@ -111,13 +116,17 @@ def train_multimodal_llm(
             input_ids = batch["input_ids"].to(device)
             target_ids = batch["target_ids"].to(device)
 
-            logits, loss = llm(input_ids, targets=target_ids)
-            scaled_loss = loss / grad_accum_steps
-            scaled_loss.backward()
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                logits, loss = llm(input_ids, targets=target_ids)
+                scaled_loss = loss / grad_accum_steps
+
+            scaler.scale(scaled_loss).backward()
 
             if (step + 1) % grad_accum_steps == 0 or (step + 1) == len(dataloader):
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(llm.parameters(), train_cfg.grad_clip)
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 scheduler.step()
                 optimizer.zero_grad()
 
