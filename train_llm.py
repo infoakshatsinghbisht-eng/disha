@@ -4,17 +4,19 @@ Trains causal next-token prediction across text tokens and discrete visual token
 """
 
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import argparse
 import time
+from typing import Optional
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from config import LLMConfig, VQVAEConfig, TrainingConfig
-from tokenizer.text_tokenizer import ByteTokenizer
 from vqvae.model import VQVAE
 from model.transformer import MultimodalTransformer
+from tokenizer.text_tokenizer import ByteTokenizer
 from pipeline.dataset import TextImageDataset
 
 
@@ -27,11 +29,39 @@ def train_multimodal_llm(
     output_path: str = "checkpoints/multimodal_llm.pt",
     num_samples: int = 300,
     data_dir: str = None,
+    dim: Optional[int] = None,
+    num_layers: Optional[int] = None,
+    num_heads: Optional[int] = None,
+    force_2b: bool = False,
 ):
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     print(f"[*] Starting Multimodal LLM Training on device: {device}")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     llm_cfg = LLMConfig()
+
+    # Dynamic VRAM scaling: If on consumer GPU (< 20GB VRAM like Colab T4) and not force_2b
+    if not force_2b and dim is None:
+        if device.startswith("cuda") and torch.cuda.is_available():
+            vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            if vram_gb < 20.0:
+                print(f"[*] Detected {vram_gb:.1f} GB VRAM (Tesla T4 / standard GPU).")
+                print("[+] Auto-optimizing Transformer core (dim=512, layers=8, heads=8) to prevent OOM and maximize throughput.")
+                llm_cfg.dim = 512
+                llm_cfg.num_layers = 8
+                llm_cfg.num_heads = 8
+                llm_cfg.num_kv_heads = 4
+    else:
+        if dim is not None:
+            llm_cfg.dim = dim
+        if num_layers is not None:
+            llm_cfg.num_layers = num_layers
+        if num_heads is not None:
+            llm_cfg.num_heads = num_heads
+            llm_cfg.num_kv_heads = max(1, num_heads // 4)
+
     vq_cfg = VQVAEConfig()
     train_cfg = TrainingConfig()
 

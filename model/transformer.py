@@ -193,13 +193,25 @@ class MultimodalTransformer(nn.Module):
             mask = self.build_causal_mask(seq_len, tokens.device)
 
         for layer in self.layers:
-            h = layer(
-                h,
-                freqs_cis=freqs_cis,
-                mask=mask,
-                use_cache=use_cache,
-                start_pos=start_pos,
-            )
+            if self.training and targets is not None and not use_cache:
+                def make_custom_forward(mod):
+                    def custom_forward(hidden, freqs, attn_mask):
+                        return mod(hidden, freqs_cis=freqs, mask=attn_mask, use_cache=False, start_pos=0)
+                    return custom_forward
+
+                h = torch.utils.checkpoint.checkpoint(
+                    make_custom_forward(layer),
+                    h, freqs_cis, mask,
+                    use_reentrant=False,
+                )
+            else:
+                h = layer(
+                    h,
+                    freqs_cis=freqs_cis,
+                    mask=mask,
+                    use_cache=use_cache,
+                    start_pos=start_pos,
+                )
 
         h = self.norm(h)
         logits = self.output(h)  # (B, SeqLen, VocabSize)

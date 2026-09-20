@@ -4,8 +4,10 @@ Trains VQ-VAE and 2.0B Transformer on Scraped Internet Web Dataset.
 """
 
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import time
 import argparse
+from typing import Optional
 import torch
 
 from web_scraper_dataset import scrape_internet_dataset
@@ -21,6 +23,10 @@ def run_2b_training(
     vq_epochs: int = 4,
     llm_epochs: int = 4,
     batch_size: int = 4,
+    dim: Optional[int] = None,
+    num_layers: Optional[int] = None,
+    num_heads: Optional[int] = None,
+    force_2b: bool = False,
 ):
     start_total = time.time()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -66,6 +72,10 @@ def run_2b_training(
         output_path="checkpoints/multimodal_llm.pt",
         num_samples=num_train,
         data_dir=train_dir,
+        dim=dim,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        force_2b=force_2b,
     )
 
     # 4. Multi-Domain Validation Generation
@@ -111,6 +121,10 @@ if __name__ == "__main__":
     parser.add_argument("--vq_epochs", type=int, default=4)
     parser.add_argument("--llm_epochs", type=int, default=4)
     parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--dim", type=int, default=None, help="Hidden dimension (default: auto-optimized for GPU)")
+    parser.add_argument("--num_layers", type=int, default=None, help="Number of transformer layers")
+    parser.add_argument("--num_heads", type=int, default=None, help="Number of attention heads")
+    parser.add_argument("--force_2b", action="store_true", help="Force full 2B architecture (requires 40GB+ A100 GPU)")
     args = parser.parse_args()
 
     run_2b_training(
@@ -119,4 +133,8 @@ if __name__ == "__main__":
         vq_epochs=args.vq_epochs,
         llm_epochs=args.llm_epochs,
         batch_size=args.batch_size,
+        dim=args.dim,
+        num_layers=args.num_layers,
+        num_heads=args.num_heads,
+        force_2b=args.force_2b,
     )

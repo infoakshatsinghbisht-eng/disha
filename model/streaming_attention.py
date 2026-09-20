@@ -60,7 +60,7 @@ class StreamingAttention(nn.Module):
         self.wk = nn.Linear(dim, self.num_kv_heads * self.head_dim, bias=False)
         self.wv = nn.Linear(dim, self.num_kv_heads * self.head_dim, bias=False)
         self.wo = nn.Linear(self.num_heads * self.head_dim, dim, bias=False)
-
+        self.dropout_p = float(dropout)
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
 
         # Rolling KV-Cache buffers
@@ -132,15 +132,11 @@ class StreamingAttention(nn.Module):
         keys = keys.transpose(1, 2)
         values = values.transpose(1, 2)
 
-        # Scaled Dot-Product Attention
-        scores = torch.matmul(xq, keys.transpose(-2, -1)) / math.sqrt(self.head_dim)
-
-        if mask is not None:
-            scores = scores + mask
-
-        probs = F.softmax(scores.float(), dim=-1).type_as(xq)
-        probs = self.dropout(probs)
-
-        output = torch.matmul(probs, values)
+        # Memory-Efficient / Flash Scaled Dot-Product Attention
+        output = F.scaled_dot_product_attention(
+            xq, keys, values,
+            attn_mask=mask,
+            dropout_p=self.dropout_p if self.training else 0.0,
+        )
         output = output.transpose(1, 2).contiguous().view(B, SeqLen, -1)
         return self.wo(output)
