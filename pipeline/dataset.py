@@ -207,8 +207,9 @@ class TextImageDataset(Dataset):
         # Visual Tokenization (if VQ-VAE provided, or placeholder discrete grid)
         if self.vqvae is not None:
             with torch.no_grad():
-                img_batch = img_tensor.unsqueeze(0)
-                img_tokens = self.vqvae.encode_to_indices(img_batch).squeeze(0)  # (256,)
+                vq_device = next(self.vqvae.parameters()).device
+                img_batch = img_tensor.unsqueeze(0).to(vq_device)
+                img_tokens = self.vqvae.encode_to_indices(img_batch).squeeze(0).cpu()  # (256,)
                 # Offset image tokens to avoid collision with text vocabulary
                 img_tokens = img_tokens + self.text_vocab_size
         else:

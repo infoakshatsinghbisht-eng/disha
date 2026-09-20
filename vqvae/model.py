@@ -157,6 +157,12 @@ class VQVAE(nn.Module):
         Converts image tensor (B, 3, H, W) to flat token indices (B, N).
         E.g. 256x256 image -> (B, 256) visual tokens.
         """
+        try:
+            device = next(self.parameters()).device
+            if x.device != device:
+                x = x.to(device)
+        except StopIteration:
+            pass
         _, _, indices = self.encode(x)
         return indices.view(x.size(0), -1)
 
@@ -164,6 +170,12 @@ class VQVAE(nn.Module):
         """
         Converts flat token indices (B, N) or (B, H, W) into an RGB image (B, 3, H, W).
         """
+        try:
+            device = next(self.parameters()).device
+            if indices.device != device:
+                indices = indices.to(device)
+        except StopIteration:
+            pass
         if indices.dim() == 2:
             B, N = indices.shape
             H = int(N ** 0.5) if grid_size is None else grid_size
