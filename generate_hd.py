@@ -4,6 +4,8 @@ Uses Pre-Trained State-of-the-Art Diffusion Core (SDXL Turbo) with optional Dish
 """
 
 import os
+import warnings
+warnings.filterwarnings("ignore")
 import argparse
 import torch
 from PIL import Image
@@ -65,6 +67,7 @@ def generate_hd_image(
         guidance_scale=guidance_scale,
         generator=generator,
     )
+    print("[*] Decoding final 1024x1024 RGB image...")
     img = result.images[0]
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -78,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--prompt", type=str, required=True, help="Text prompt for image generation")
     parser.add_argument("--output", type=str, default="disha_hd_output.png", help="Output file path")
     parser.add_argument("--lora", type=str, default=None, help="Path to custom trained LoRA weights")
-    parser.add_argument("--steps", type=int, default=4, help="Inference steps (1-4 for SDXL-Turbo)")
+    parser.add_argument("--steps", type=int, default=2, help="Inference steps (1-2 for fast SDXL-Turbo)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
