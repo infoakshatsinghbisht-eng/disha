@@ -34,7 +34,7 @@ SCRAPE_CATEGORIES = [
 ]
 
 
-def fetch_web_image(image_id: int, size: int = 64) -> Image.Image:
+def fetch_web_image(image_id: int, size: int = 256) -> Image.Image:
     """Downloads an image from the web and resizes it with high quality Lanczos anti-aliasing."""
     url = f"https://picsum.photos/id/{image_id}/{size * 2}/{size * 2}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"})
@@ -48,7 +48,7 @@ def scrape_internet_dataset(
     output_dir: str = "data_web_scraped",
     num_train: int = 400,
     num_val: int = 50,
-    image_size: int = 64,
+    image_size: int = 256,
 ):
     train_dir = os.path.join(output_dir, "train")
     val_dir = os.path.join(output_dir, "val")

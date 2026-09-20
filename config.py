@@ -14,15 +14,15 @@ from typing import Optional, Tuple
 @dataclass
 class VQVAEConfig:
     in_channels: int = 3
-    hidden_dim: int = 64
+    hidden_dim: int = 128             # Increased capacity for high-fidelity 256x256
     num_res_blocks: int = 2
-    num_downsamples: int = 3          # 64x64 -> 8x8 (64 visual tokens)
+    num_downsamples: int = 4          # 256x256 -> 16x16 (256 visual tokens)
     codebook_size: int = 2048         # High-capacity discrete codebook
     embedding_dim: int = 64           # Dimension of each codebook vector
     commitment_cost: float = 0.25     # Beta weight for commitment loss
     decay: float = 0.99               # EMA decay factor
-    image_size: int = 64              # Target image resolution
-    latent_grid_size: int = 8         # 8x8 = 64 visual tokens per image
+    image_size: int = 256             # Target 256x256 high-resolution image
+    latent_grid_size: int = 16        # 16x16 = 256 visual tokens per image
 
 
 @dataclass
@@ -45,7 +45,7 @@ class LLMConfig:
     # 2.0 Billion Parameter Architecture (dim=2048, layers=36, heads=32, kv_heads=8, SwiGLU multiplier=3.5)
     text_vocab_size: int = 8000       # Expanded text vocabulary
     image_vocab_size: int = 2048      # Matches VQ-VAE codebook size
-    max_seq_len: int = 256            # Context window
+    max_seq_len: int = 512            # Context window (supports 256 text + 256 image tokens)
     
     dim: int = 2048                   # Model Hidden Dimension
     num_layers: int = 36              # Number of Transformer Decoder layers (~1.98B parameters)
@@ -58,7 +58,7 @@ class LLMConfig:
     dropout: float = 0.0              # Dropout rate
     
     # Multimodal Tokens
-    image_token_len: int = 64         # 8x8 tokens representing one image
+    image_token_len: int = 256        # 16x16 = 256 tokens representing one 256x256 image
 
 
 @dataclass
@@ -80,4 +80,4 @@ class GenerationConfig:
     top_p: float = 0.90
     cfg_scale: float = 1.5
     repetition_penalty: float = 1.05
-    max_new_tokens: int = 64
+    max_new_tokens: int = 256

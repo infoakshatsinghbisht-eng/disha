@@ -1,10 +1,24 @@
-# 🚀 Multimodal LLM from Scratch (Native Text-to-Image Foundation Model)
+# 🚀 Disha Multimodal Foundation Model: Dual-Engine Studio
 
-A 100% scratch-built Multimodal Large Language Model in **pure PyTorch** without relying on third-party LLM APIs or wrapped model checkpoints.
+A state-of-the-art dual-engine multimodal AI platform providing **both** a 100% custom from-scratch PyTorch architecture and an Ultra-HD 1024x1024 LoRA fine-tuning pipeline.
 
 ---
 
-## 🌟 Key Architecture Innovations
+## 🏛️ Dual-Engine Architecture
+
+| Feature | **Engine 1: Native Scratch Model** | **Engine 2: Disha Ultra-HD LoRA** |
+| :--- | :--- | :--- |
+| **Paradigm** | 100% Scratch PyTorch Foundation Model | Fine-Tuned Custom LoRA Adapter |
+| **Image Resolution** | $256 \times 256$ Crisp Native | $1024 \times 1024$ Commercial Studio Grade |
+| **Visual Encoding** | Hierarchical 4-stage VQ-VAE ($16 \times 16 = 256$ tokens) | Latent Diffusion VAE |
+| **Core Architecture** | RoPE + FlashAttention + GQA + SwiGLU Transformer | Pre-trained Diffusion Backbone + Custom LoRA (~80MB) |
+| **Inference Time** | Autoregressive Next-Token Sampling | 1-2 Step Turbo Sampling (~1.5s on GPU) |
+| **Execution Script** | `python generate.py --prompt "..."` | `python generate_hd.py --prompt "..." --lora ...` |
+| **Training Script** | `python train_2b_master.py` | `python train_disha_full.py` |
+
+---
+
+## 🌟 Key Architecture Innovations (Engine 1: Scratch Core)
 
 1. **Discrete Visual Tokenizer (VQ-VAE with Codebook Quantization)**
    - Maps continuous $256 \times 256 \times 3$ images into a discrete grid of $16 \times 16 = 256$ visual tokens.
@@ -19,11 +33,9 @@ A 100% scratch-built Multimodal Large Language Model in **pure PyTorch** without
    - **Unified Embedding Table**: $V_{total} = V_{text} + V_{image} + V_{special}$.
    - **RMSNorm**: Root Mean Square Layer Normalization for stability.
    - **RoPE (Rotary Position Embeddings)**: Dynamic complex exponential rotary position embeddings ($cis(m \theta_i)$).
-   - **Grouped Query Attention (GQA)** with full Key-Value caching for fast auto-regressive generation.
+   - **Grouped Query Attention (GQA)** with memory-efficient `scaled_dot_product_attention` and Key-Value caching.
    - **SwiGLU Non-Linear MLP**: $(W_1 x \odot \text{silu}(W_3 x)) W_2$.
-
-4. **Generation & Sampling Pipeline**
-   - Temperature control, Top-K filtering, Top-P Nucleus sampling, and Classifier-Free Guidance (CFG).
+   - **Activation Checkpointing**: Gradient checkpointing across all decoder layers to minimize VRAM footprint.
 
 ---
 

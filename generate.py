@@ -34,30 +34,45 @@ def main():
         print(f"[+] Loading checkpoint from {args.checkpoint}")
         pipeline = MultimodalGeneratorPipeline.from_pretrained(args.checkpoint, device=args.device)
     else:
-        print("[!] No checkpoint found at specified path. Initializing fresh model for demonstration.")
+        print("[!] No checkpoint found at specified path. Initializing model for demonstration.")
         llm_cfg = LLMConfig()
         vq_cfg = VQVAEConfig()
         tokenizer = ByteTokenizer()
         total_vocab = llm_cfg.text_vocab_size + llm_cfg.image_vocab_size + len(tokenizer.SPECIAL_TOKENS)
         
+        # Adaptive dimensions for CPU demonstration vs GPU
+        dim = 256 if args.device == "cpu" else llm_cfg.dim
+        num_layers = 4 if args.device == "cpu" else llm_cfg.num_layers
+        num_heads = 4 if args.device == "cpu" else llm_cfg.num_heads
+        num_kv_heads = 2 if args.device == "cpu" else (llm_cfg.num_kv_heads or 4)
+
         llm = MultimodalTransformer(
             vocab_size=total_vocab,
-            dim=llm_cfg.dim,
-            num_layers=llm_cfg.num_layers,
-            num_heads=llm_cfg.num_heads,
-            num_kv_heads=llm_cfg.num_kv_heads,
+            dim=dim,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            max_seq_len=llm_cfg.max_seq_len,
+            ffn_dim_multiplier=llm_cfg.ffn_dim_multiplier,
+            multiple_of=llm_cfg.multiple_of,
+            norm_eps=llm_cfg.norm_eps,
+            rope_theta=llm_cfg.rope_theta,
         )
         vqvae = VQVAE(
             in_channels=vq_cfg.in_channels,
             hidden_dim=vq_cfg.hidden_dim,
             embedding_dim=vq_cfg.embedding_dim,
             codebook_size=vq_cfg.codebook_size,
+            num_res_blocks=vq_cfg.num_res_blocks,
+            num_downsamples=vq_cfg.num_downsamples,
+            commitment_cost=vq_cfg.commitment_cost,
         )
         pipeline = MultimodalGeneratorPipeline(
             llm=llm,
             vqvae=vqvae,
             tokenizer=tokenizer,
             text_vocab_size=llm_cfg.text_vocab_size,
+            image_token_len=llm_cfg.image_token_len,
             device=args.device,
         )
 

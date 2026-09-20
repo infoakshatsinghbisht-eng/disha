@@ -44,7 +44,7 @@ def run_2b_training(
             output_dir=data_dir,
             num_train=num_train,
             num_val=num_val,
-            image_size=64,
+            image_size=256,
         )
     else:
         print(f"[+] Internet dataset ready in {data_dir}/ with {len(os.listdir(train_dir)) // 2} image-text pairs.")

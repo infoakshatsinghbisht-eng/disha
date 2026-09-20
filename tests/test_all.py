@@ -158,9 +158,26 @@ class TestMultimodalLLM(unittest.TestCase):
         )
         img = pipeline.generate_image(
             prompt="a glowing circle",
-            gen_config=GenerationConfig(temperature=0.8),
+            gen_config=GenerationConfig(temperature=0.8, max_new_tokens=64),
         )
         self.assertIsInstance(img, Image.Image)
+
+    def test_256x256_vqvae_and_generation(self):
+        """Verify 256x256 resolution VQ-VAE (num_downsamples=4) and 256-token decoding."""
+        vqvae = VQVAE(
+            in_channels=3,
+            hidden_dim=32,
+            embedding_dim=16,
+            codebook_size=256,
+            num_res_blocks=1,
+            num_downsamples=4,  # 256x256 -> 16x16 = 256 tokens
+        )
+        img_tensor = torch.randn(1, 3, 256, 256)
+        indices = vqvae.encode_to_indices(img_tensor)
+        self.assertEqual(indices.shape, (1, 256))
+
+        recon = vqvae.decode_from_indices(indices)
+        self.assertEqual(recon.shape, (1, 3, 256, 256))
 
 
 if __name__ == "__main__":

@@ -61,6 +61,11 @@ def train_disha_lora(
     lora_rank: int = 8,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ):
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     print("=" * 75)
     print(f"[*] STARTING DISHA PRE-TRAINED LORA FINE-TUNING ON {device.upper()}")
     print(f"[*] Base Foundation Model: {base_model_id}")
@@ -98,6 +103,10 @@ def train_disha_lora(
     pipe.text_encoder.requires_grad_(False)
     if hasattr(pipe, "text_encoder_2") and pipe.text_encoder_2 is not None:
         pipe.text_encoder_2.requires_grad_(False)
+
+    # Enable gradient checkpointing to reduce VRAM by up to 70%
+    if hasattr(pipe.unet, "enable_gradient_checkpointing"):
+        pipe.unet.enable_gradient_checkpointing()
 
     # 3. Inject LoRA Adapters into UNet
     print(f"[*] Injecting LoRA Adapters (Rank={lora_rank}) into Attention Layers...")
@@ -188,11 +197,15 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=5, help="Number of fine-tuning epochs")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size (2 recommended for T4 GPU)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--engine", type=str, default="sdxl-turbo", choices=["sdxl-turbo", "sd-turbo"], help="Engine architecture")
     args = parser.parse_args()
+
+    base_model_id = "stabilityai/sdxl-turbo" if "xl" in args.engine.lower() else "stabilityai/sd-turbo"
 
     train_disha_lora(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
+        base_model_id=base_model_id,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,

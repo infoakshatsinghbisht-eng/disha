@@ -60,7 +60,7 @@ class MultimodalGeneratorPipeline:
             num_layers=getattr(llm_cfg, "num_layers", 8),
             num_heads=getattr(llm_cfg, "num_heads", 8),
             num_kv_heads=getattr(llm_cfg, "num_kv_heads", 4),
-            max_seq_len=getattr(llm_cfg, "max_seq_len", 256),
+            max_seq_len=getattr(llm_cfg, "max_seq_len", 512),
             ffn_dim_multiplier=getattr(llm_cfg, "ffn_dim_multiplier", 3.5),
             multiple_of=getattr(llm_cfg, "multiple_of", 64),
             norm_eps=getattr(llm_cfg, "norm_eps", 1e-6),
@@ -71,11 +71,11 @@ class MultimodalGeneratorPipeline:
 
         vqvae = VQVAE(
             in_channels=getattr(vq_cfg, "in_channels", 3),
-            hidden_dim=getattr(vq_cfg, "hidden_dim", 64),
+            hidden_dim=getattr(vq_cfg, "hidden_dim", 128),
             embedding_dim=getattr(vq_cfg, "embedding_dim", 64),
             codebook_size=getattr(vq_cfg, "codebook_size", 2048),
             num_res_blocks=getattr(vq_cfg, "num_res_blocks", 2),
-            num_downsamples=getattr(vq_cfg, "num_downsamples", 3),
+            num_downsamples=getattr(vq_cfg, "num_downsamples", 4),
             commitment_cost=getattr(vq_cfg, "commitment_cost", 0.25),
         )
         if "vqvae_state_dict" in ckpt:
@@ -85,8 +85,8 @@ class MultimodalGeneratorPipeline:
             llm=llm,
             vqvae=vqvae,
             tokenizer=tokenizer,
-            text_vocab_size=llm_cfg.text_vocab_size,
-            image_token_len=llm_cfg.image_token_len,
+            text_vocab_size=getattr(llm_cfg, "text_vocab_size", 8000),
+            image_token_len=getattr(llm_cfg, "image_token_len", 256),
             device=device,
         )
 

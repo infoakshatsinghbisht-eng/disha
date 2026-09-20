@@ -19,6 +19,7 @@ def run_full_pipeline(
     epochs: int = 5,
     batch_size: int = 2,
     lr: float = 1e-4,
+    engine: str = "sdxl-turbo",
 ):
     start_time = time.time()
     data_dir = "data_hd_scraped/train"
@@ -41,11 +42,13 @@ def run_full_pipeline(
 
     # Stage 2: Train Disha Custom LoRA Adapter
     print("\n" + "=" * 75)
-    print("--- [STAGE 2/3] Fine-Tuning Disha Model with LoRA on GPU ---")
+    print(f"--- [STAGE 2/3] Fine-Tuning Disha Model ({engine}) with LoRA on GPU ---")
     print("=" * 75)
+    base_model_id = "stabilityai/sdxl-turbo" if "xl" in engine.lower() else "stabilityai/sd-turbo"
     train_disha_lora(
         data_dir=data_dir,
         output_dir=lora_dir,
+        base_model_id=base_model_id,
         epochs=epochs,
         batch_size=batch_size,
         lr=lr,
@@ -53,7 +56,7 @@ def run_full_pipeline(
 
     # Stage 3: Generate Validation HD Samples
     print("\n" + "=" * 75)
-    print("--- [STAGE 3/3] Generating Crystal-Clear 1024x1024 Test Outputs ---")
+    print("--- [STAGE 3/3] Generating Crystal-Clear Test Outputs ---")
     print("=" * 75)
     os.makedirs(eval_dir, exist_ok=True)
 
@@ -71,7 +74,8 @@ def run_full_pipeline(
                 prompt=prompt,
                 output_path=out_file,
                 lora_path=lora_dir,
-                num_inference_steps=4,
+                engine=engine,
+                num_inference_steps=2,
             )
         except Exception as e:
             print(f"[!] Warning: Sample generation fallback: {e}")
@@ -91,6 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size for GPU")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--engine", type=str, default="sdxl-turbo", choices=["sdxl-turbo", "sd-turbo"], help="Engine architecture")
     args = parser.parse_args()
 
     run_full_pipeline(
@@ -98,4 +103,5 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
+        engine=args.engine,
     )
