@@ -52,26 +52,31 @@ class MultimodalGeneratorPipeline:
         llm_cfg = ckpt.get("llm_config", LLMConfig())
         vq_cfg = ckpt.get("vqvae_config", VQVAEConfig())
 
-        total_vocab_size = llm_cfg.text_vocab_size + llm_cfg.image_vocab_size + len(tokenizer.SPECIAL_TOKENS)
+        total_vocab_size = getattr(llm_cfg, "text_vocab_size", 8000) + getattr(llm_cfg, "image_vocab_size", 2048) + len(tokenizer.SPECIAL_TOKENS)
 
         llm = MultimodalTransformer(
             vocab_size=total_vocab_size,
-            dim=llm_cfg.dim,
-            num_layers=llm_cfg.num_layers,
-            num_heads=llm_cfg.num_heads,
-            num_kv_heads=llm_cfg.num_kv_heads,
-            max_seq_len=llm_cfg.max_seq_len,
+            dim=getattr(llm_cfg, "dim", 512),
+            num_layers=getattr(llm_cfg, "num_layers", 8),
+            num_heads=getattr(llm_cfg, "num_heads", 8),
+            num_kv_heads=getattr(llm_cfg, "num_kv_heads", 4),
+            max_seq_len=getattr(llm_cfg, "max_seq_len", 256),
+            ffn_dim_multiplier=getattr(llm_cfg, "ffn_dim_multiplier", 3.5),
+            multiple_of=getattr(llm_cfg, "multiple_of", 64),
+            norm_eps=getattr(llm_cfg, "norm_eps", 1e-6),
+            rope_theta=getattr(llm_cfg, "rope_theta", 10000.0),
         )
         if "llm_state_dict" in ckpt:
             llm.load_state_dict(ckpt["llm_state_dict"])
 
         vqvae = VQVAE(
-            in_channels=vq_cfg.in_channels,
-            hidden_dim=vq_cfg.hidden_dim,
-            embedding_dim=vq_cfg.embedding_dim,
-            codebook_size=vq_cfg.codebook_size,
-            num_res_blocks=vq_cfg.num_res_blocks,
-            num_downsamples=vq_cfg.num_downsamples,
+            in_channels=getattr(vq_cfg, "in_channels", 3),
+            hidden_dim=getattr(vq_cfg, "hidden_dim", 64),
+            embedding_dim=getattr(vq_cfg, "embedding_dim", 64),
+            codebook_size=getattr(vq_cfg, "codebook_size", 2048),
+            num_res_blocks=getattr(vq_cfg, "num_res_blocks", 2),
+            num_downsamples=getattr(vq_cfg, "num_downsamples", 3),
+            commitment_cost=getattr(vq_cfg, "commitment_cost", 0.25),
         )
         if "vqvae_state_dict" in ckpt:
             vqvae.load_state_dict(ckpt["vqvae_state_dict"])
