@@ -18,9 +18,11 @@ def generate_hd_image(
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     seed: int = 42,
 ) -> Image.Image:
-    """
-    Generates a crystal-clear 1024x1024 image from text prompt.
-    """
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     from diffusers import AutoPipelineForText2Image
 
     print(f"[*] Loading HD Foundation Model (SDXL-Turbo) on {device}...")
@@ -31,7 +33,23 @@ def generate_hd_image(
         torch_dtype=dtype,
         variant="fp16" if dtype == torch.float16 else None,
     )
-    pipe.to(device)
+
+    if device.startswith("cuda"):
+        try:
+            pipe.to(device)
+        except torch.cuda.OutOfMemoryError:
+            print("[*] Low VRAM detected. Activating Model CPU Offloading (Sequential Execution)...")
+            gc.collect()
+            torch.cuda.empty_cache()
+            pipe.enable_model_cpu_offload()
+    else:
+        pipe.to(device)
+
+    # Enable memory optimizations
+    if hasattr(pipe, "enable_vae_slicing"):
+        pipe.enable_vae_slicing()
+    if hasattr(pipe, "enable_attention_slicing"):
+        pipe.enable_attention_slicing()
 
     # Load custom trained LoRA weights if provided
     if lora_path and os.path.exists(lora_path):
