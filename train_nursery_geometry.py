@@ -56,58 +56,61 @@ COLORS = {
 
 def render_canonical_primitive(lesson_key: str, color_name: str = "default", size: int = 256) -> Tuple[Image.Image, str]:
     """
-    Renders an authoritative, mathematically precise ground-truth primitive.
+    Renders an authoritative ground-truth primitive with 4x supersampled anti-aliasing
+    so that geometric boundaries smoothly quantize across the VQ-VAE codebook grid.
     """
-    img = Image.new("RGB", (size, size), (255, 255, 255))
-    draw = ImageDraw.Draw(img)
-    center = size // 2
+    big = 1024
+    img_big = Image.new("RGB", (big, big), (255, 255, 255))
+    draw = ImageDraw.Draw(img_big)
+    c = big // 2
 
     if lesson_key == "1_dot":
         col = COLORS.get(color_name, COLORS["red"])
         actual_name = color_name if color_name in COLORS else "red"
-        r = 36
-        draw.ellipse([center - r, center - r, center + r, center + r], fill=col)
+        r = 38 * 4
+        draw.ellipse([c - r, c - r, c + r, c + r], fill=col)
         prompt = f"a solid {actual_name} dot centered on white canvas"
 
     elif lesson_key == "2_line":
         col = COLORS.get(color_name, COLORS["blue"])
         actual_name = color_name if color_name in COLORS else "blue"
-        draw.line([(35, center), (size - 35, center)], fill=col, width=16)
+        draw.line([(140, c), (big - 140, c)], fill=col, width=16 * 4)
         prompt = f"a clean {actual_name} horizontal line on white background"
 
     elif lesson_key == "3_circle":
         col = COLORS.get(color_name, COLORS["red"])
         actual_name = color_name if color_name in COLORS else "red"
-        r = 65
-        draw.ellipse([center - r, center - r, center + r, center + r], fill=col)
+        r = 290  # r = 72.5, anti-aliased to prevent flat chord boundary quantization
+        draw.ellipse([c - r, c - r, c + r, c + r], fill=col)
         prompt = f"a solid {actual_name} circle on white background"
 
     elif lesson_key == "4_square":
         col = COLORS.get(color_name, COLORS["green"])
         actual_name = color_name if color_name in COLORS else "green"
-        half = 60
-        draw.rectangle([center - half, center - half, center + half, center + half], fill=col)
+        half = 60 * 4
+        draw.rectangle([c - half, c - half, c + half, c + half], fill=col)
         prompt = f"a solid {actual_name} square on white background"
 
     elif lesson_key == "5_triangle":
         col = COLORS.get(color_name, COLORS["purple"])
         actual_name = color_name if color_name in COLORS else "purple"
-        h = 75
+        h = 80 * 4
         pts = [
-            (center, center - h),
-            (center - int(h * 1.05), center + int(h * 0.7)),
-            (center + int(h * 1.05), center + int(h * 0.7)),
+            (c, c - h),
+            (c - int(h * 1.05), c + int(h * 0.7)),
+            (c + int(h * 1.05), c + int(h * 0.7)),
         ]
         draw.polygon(pts, fill=col)
         prompt = f"a solid {actual_name} triangle on white background"
 
     else:
         col = COLORS["red"]
-        r = 65
-        draw.ellipse([center - r, center - r, center + r, center + r], fill=col)
+        r = 290
+        draw.ellipse([c - r, c - r, c + r, c + r], fill=col)
         prompt = "a solid red circle on white background"
 
-    return img, prompt
+    final_img = img_big.resize((size, size), Image.Resampling.LANCZOS)
+    return final_img, prompt
 
 
 def decode_tokens_to_image(vqvae: VQVAE, tokens: List[int], device: str) -> Image.Image:
