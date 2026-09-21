@@ -158,7 +158,7 @@ def create_exam_card(
     draw.rectangle([pad - 1, header_h + pad - 1, pad + w, header_h + pad + h], outline=(210, 215, 225), width=1)
     card.paste(target_img, (pad, header_h + pad))
     draw.rectangle([pad + 6, header_h + pad + 6, pad + 155, header_h + pad + 24], fill=(245, 247, 250))
-    draw.text((pad + 10, header_h + pad + 8), "TARGET (Ground Truth)", fill=(40, 50, 60))
+    draw.text((pad + 10, header_h + pad + 8), "TARGET  (Codebook)", fill=(40, 50, 60))
 
     # Border & Badges for Learned (Right)
     right_x = w + pad * 2
@@ -365,8 +365,10 @@ def train_reinforcement_mastery(
         pred_tokens_best = pred_visual.detach().cpu().tolist()
 
     learned_img = decode_tokens_to_image(vqvae, pred_tokens_best, device=device)
+    target_recon_img = decode_tokens_to_image(vqvae, target_gt_tokens.detach().cpu().tolist(), device=device)
+
     exam_card = create_exam_card(
-        target_img=target_img,
+        target_img=target_recon_img,
         learned_img=learned_img,
         lesson_key=lesson_key,
         prompt=target_prompt,
