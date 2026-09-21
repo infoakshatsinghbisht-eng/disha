@@ -153,67 +153,18 @@ def run_graduation_exam(checkpoint_path: str = "checkpoints/multimodal_llm.pt", 
 
     # 1. Load Architecture
     print("\n[1/3] Loading trained Disha Transformer & VQ-VAE...")
-    llm_cfg = LLMConfig()
-    vq_cfg = VQVAEConfig()
-    tokenizer = ByteTokenizer()
-    total_vocab = llm_cfg.text_vocab_size + llm_cfg.image_vocab_size + len(tokenizer.SPECIAL_TOKENS)
-
-    llm = MultimodalTransformer(
-        vocab_size=total_vocab,
-        dim=llm_cfg.dim,
-        num_layers=llm_cfg.num_layers,
-        num_heads=llm_cfg.num_heads,
-        num_kv_heads=llm_cfg.num_kv_heads,
-        max_seq_len=llm_cfg.max_seq_len,
-    ).to(device)
-
-    vqvae = VQVAE(
-        in_channels=vq_cfg.in_channels,
-        hidden_dim=vq_cfg.hidden_dim,
-        embedding_dim=vq_cfg.embedding_dim,
-        codebook_size=vq_cfg.codebook_size,
-        num_res_blocks=vq_cfg.num_res_blocks,
-        num_downsamples=vq_cfg.num_downsamples,
-    ).to(device)
-
-    # Search candidates for checkpoint
-    candidate_paths = [
-        checkpoint_path,
-        os.path.join(os.getcwd(), checkpoint_path),
-        "/content/disha/checkpoints/multimodal_llm.pt",
-        "/content/checkpoints/multimodal_llm.pt",
-        os.path.join("..", checkpoint_path),
-    ]
-    resolved = None
-    for cand in candidate_paths:
-        if cand and os.path.exists(cand):
-            resolved = cand
-            break
-
-    if resolved:
-        print(f"[+] Restoring weights from: {resolved}")
-        state = torch.load(resolved, map_location=device, weights_only=False)
-        if "model_state_dict" in state:
-            llm.load_state_dict(state["model_state_dict"], strict=False)
-        elif "llm_state_dict" in state:
-            llm.load_state_dict(state["llm_state_dict"], strict=False)
-        else:
-            llm.load_state_dict(state, strict=False)
-
-        if "vqvae_state_dict" in state:
-            vqvae.load_state_dict(state["vqvae_state_dict"], strict=False)
-    else:
-        print("[!] Warning: Using freshly initialized checkpoint.")
-
-    llm.eval()
-    vqvae.eval()
+    from pipeline.sampler import MultimodalGeneratorPipeline
+    pipeline = MultimodalGeneratorPipeline.from_pretrained(checkpoint_path, device=device)
+    llm = pipeline.llm.eval()
+    vqvae = pipeline.vqvae.eval()
+    tokenizer = pipeline.tokenizer
 
     # 2. Run Autoregressive Examination
     print("\n[2/3] Taking autoregressive examination across all 4 shapes...")
     exam_results = []
 
-    text_vocab_size = llm_cfg.text_vocab_size
-    image_token_len = llm_cfg.image_token_len
+    text_vocab_size = pipeline.text_vocab_size
+    image_token_len = pipeline.image_token_len
     min_img_token = text_vocab_size
     max_img_token = text_vocab_size + vqvae.codebook_size
 
