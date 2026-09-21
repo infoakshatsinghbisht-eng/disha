@@ -312,22 +312,49 @@ def train_reinforcement_mastery(
     batch_tgt = batch_tgt.to(device)
     loss_weights = loss_weights.to(device)
 
-    print(f"[+] Total Joint Batch Samples : {B} (Covering {len(primary_targets)} Core Shapes)")
+    print(f"[+] Total Joint Batch Samples : {len(batch_samples)} (Covering {len(primary_targets)} Core Shapes)")
 
-    # 4. Iterative Reinforcement Loop
+    # 4. Iterative Reinforcement Loop (Micro-batch Gradient Accumulation for Zero-OOM guarantee)
     print(f"\n[3/4] Reinforcing until simultaneous multi-shape mastery is achieved...")
     optimizer = torch.optim.AdamW(llm.parameters(), lr=lr, weight_decay=0.01)
     criterion_elem = nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
 
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     start_time = time.time()
     final_step = 0
+    num_samples = len(batch_samples)
 
     for step in range(1, max_steps + 1):
         optimizer.zero_grad()
-        logits, _ = llm(batch_inp)
-        raw_loss = criterion_elem(logits.view(-1, logits.size(-1)), batch_tgt.view(-1)).view(B, -1)
-        loss = (raw_loss * loss_weights).sum() / loss_weights[batch_tgt != -100].sum()
-        loss.backward()
+        total_step_loss = 0.0
+        primary_preds = {}
+
+        # Micro-batch execution: forward-backward on individual samples to keep peak VRAM < 150MB
+        for s_idx, s in enumerate(batch_samples):
+            inp_s = s["input"].unsqueeze(0).to(device)
+            tgt_s = s["target"].unsqueeze(0).to(device)
+            img_pos = s["img_pos"]
+            gt_tokens = s["gt_tokens"].to(device)
+
+            logits_s, _ = llm(inp_s)
+            raw_loss_s = criterion_elem(logits_s.view(-1, logits_s.size(-1)), tgt_s.view(-1))
+            
+            # Focal weight for shape foreground
+            is_fg = (gt_tokens != bg_token)
+            w_s = torch.ones_like(tgt_s.view(-1), dtype=torch.float)
+            w_s[img_pos : img_pos + 256][is_fg] = 5.0
+            
+            loss_s = (raw_loss_s * w_s).sum() / (w_s[tgt_s.view(-1) != -100].sum() * num_samples)
+            loss_s.backward()
+            total_step_loss += loss_s.item() * num_samples
+
+            if s["is_primary"]:
+                with torch.no_grad():
+                    pred_v = logits_s[0, img_pos : img_pos + 256].argmax(dim=-1) - 8000
+                    primary_preds[s["lesson_key"]] = pred_v
+
         torch.nn.utils.clip_grad_norm_(llm.parameters(), max_norm=1.0)
         optimizer.step()
 
@@ -337,39 +364,40 @@ def train_reinforcement_mastery(
         all_mastered = True
         scores_summary = []
 
-        with torch.no_grad():
-            for tgt_info in primary_targets:
-                b_i = tgt_info["batch_idx"]
-                pos = tgt_info["img_pos"]
-                gt = tgt_info["gt_tokens"]
-                fg_mask = tgt_info["fg_mask"]
-                tot_fg = tgt_info["total_fg"]
+        for tgt_info in primary_targets:
+            l_key = tgt_info["lesson_key"]
+            pred_visual = primary_preds.get(l_key)
+            if pred_visual is None:
+                continue
 
-                pred_visual = logits[b_i, pos : pos + 256].argmax(dim=-1) - 8000
-                matched = (pred_visual == gt).sum().item()
-                tot_pct = (matched / 256.0) * 100.0
+            gt = tgt_info["gt_tokens"]
+            fg_mask = tgt_info["fg_mask"]
+            tot_fg = tgt_info["total_fg"]
 
-                fg_matched = (pred_visual[fg_mask] == gt[fg_mask]).sum().item()
-                fg_pct = (fg_matched / tot_fg) * 100.0
+            matched = (pred_visual == gt).sum().item()
+            tot_pct = (matched / 256.0) * 100.0
 
-                if target_acc >= 99.9:
-                    is_p_mastered = (matched == 256)
-                else:
-                    is_p_mastered = (tot_pct >= target_acc and fg_pct >= 95.0)
+            fg_matched = (pred_visual[fg_mask] == gt[fg_mask]).sum().item()
+            fg_pct = (fg_matched / tot_fg) * 100.0
 
-                if not is_p_mastered:
-                    all_mastered = False
+            if target_acc >= 99.9:
+                is_p_mastered = (matched == 256)
+            else:
+                is_p_mastered = (tot_pct >= target_acc and fg_pct >= 95.0)
 
-                short_key = tgt_info["lesson_key"].split("_")[-1].capitalize()
-                scores_summary.append(f"{short_key}: {fg_pct:.0f}%")
+            if not is_p_mastered:
+                all_mastered = False
+
+            short_key = l_key.split("_")[-1].capitalize()
+            scores_summary.append(f"{short_key}: {fg_pct:.0f}%")
 
         summary_str = " | ".join(scores_summary)
         status = "🎯 100% ALL MASTERED!" if all_mastered else "REINFORCING..."
 
         if step % 2 == 0 or step == 1 or all_mastered:
-            print(f"  [Step {step:3d}/{max_steps}] Loss: {loss.item():.4f} | {summary_str} | {status}")
+            print(f"  [Step {step:3d}/{max_steps}] Loss: {total_step_loss / num_samples:.4f} | {summary_str} | {status}")
 
-        if all_mastered and loss.item() < 0.35:
+        if all_mastered and (total_step_loss / num_samples) < 0.35:
             elapsed = time.time() - start_time
             print(f"\n[+] 🎯 ALL {len(primary_targets)} SHAPES SIMULTANEOUSLY MASTERED IN {step} STEPS! ({elapsed:.1f}s)")
             break
