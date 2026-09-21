@@ -201,7 +201,7 @@ def refine_geometry(
     b_yc = yc * scale
     fg_rgb = color_override if color_override is not None else tuple(fg_col.astype(int))
 
-    elif "tree" in hint or "pine" in hint:
+    if "tree" in hint or "pine" in hint:
         # Composite Object: Green Canopy Triangle + Brown Trunk Rectangle
         # 1. Trunk (bottom 35% of bounding box)
         trunk_top_y = min_y * scale + (bh * scale) * 0.60
