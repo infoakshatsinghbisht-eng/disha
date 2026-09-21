@@ -160,10 +160,22 @@ def train_composite_object(
         "is_primary": True,
     })
 
-    # Add Replay Anchors (Line, Circle, Square, Triangle) to eliminate catastrophic forgetting
-    replay_primitives = ["2_line", "3_circle", "4_square", "5_triangle"]
-    for l_key in replay_primitives:
-        img_p, p_prompt = render_canonical_primitive(l_key)
+    # Add Replay Anchors (Primitives + previously mastered composite objects)
+    replay_items = [
+        ("primitive", "2_line"),
+        ("primitive", "3_circle"),
+        ("primitive", "4_square"),
+        ("primitive", "5_triangle"),
+    ]
+    if object_name != "tree":
+        replay_items.append(("composite", "tree"))
+
+    for kind, key in replay_items:
+        if kind == "primitive":
+            img_p, p_prompt = render_canonical_primitive(key)
+        else:
+            img_p, p_prompt = render_canonical_composite(key)
+
         t_p = transform(img_p).unsqueeze(0).to(device)
         with torch.no_grad():
             indices_p = vqvae.encode_to_indices(t_p)[0].cpu()
@@ -189,7 +201,7 @@ def train_composite_object(
 
     target_fg_mask = (target_gt.to(device) != bg_token)
     total_fg = max(1, target_fg_mask.sum().item())
-    print(f"[+] Replay Buffer Size : {len(batch_samples)} (1 Composite Target + {len(replay_primitives)} Primitives)")
+    print(f"[+] Replay Buffer Size : {len(batch_samples)} (1 Composite Target + {len(replay_items)} Replay Anchors)")
     print(f"[+] Canonical Prompt   : \"{target_prompt}\"")
     print(f"[+] Foreground Tokens  : {total_fg} shape tokens")
 

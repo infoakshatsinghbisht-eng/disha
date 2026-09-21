@@ -139,6 +139,28 @@ def refine_geometry(
         canopy_col = (34, 160, 68) if color_override is None else color_override
         draw.polygon([(b_xc, canopy_top_y), (b_xc - canopy_half_w, canopy_bot_y), (b_xc + canopy_half_w, canopy_bot_y)], fill=canopy_col)
 
+    elif "house" in hint or "home" in hint:
+        # Composite Object: Red Roof Triangle + Cyan Walls Rectangle
+        wall_top_y = min_y * scale + (bh * scale) * 0.44
+        wall_bot_y = max_y * scale
+        wall_half_w = (bw * scale) * 0.40
+        draw.rectangle([b_xc - wall_half_w, wall_top_y, b_xc + wall_half_w, wall_bot_y], fill=(56, 189, 248))
+
+        roof_top_y = min_y * scale
+        roof_half_w = (bw * scale) * 0.50
+        roof_bot_y = wall_top_y + 8
+        roof_col = (225, 30, 40) if color_override is None else color_override
+        draw.polygon([(b_xc, roof_top_y), (b_xc - roof_half_w, roof_bot_y), (b_xc + roof_half_w, roof_bot_y)], fill=roof_col)
+
+    elif "smiley" in hint or "face" in hint:
+        # Composite Object: Yellow Circle + Black Eyes + Black Smile
+        r = ((bw + bh) * scale) / 4
+        draw.ellipse([b_xc - r, b_yc - r, b_xc + r, b_yc + r], fill=(250, 205, 30))
+        eye_r = max(4, int(r * 0.11))
+        draw.ellipse([b_xc - r * 0.35 - eye_r, b_yc - r * 0.28 - eye_r, b_xc - r * 0.35 + eye_r, b_yc - r * 0.28 + eye_r], fill=(20, 20, 20))
+        draw.ellipse([b_xc + r * 0.35 - eye_r, b_yc - r * 0.28 - eye_r, b_xc + r * 0.35 + eye_r, b_yc - r * 0.28 + eye_r], fill=(20, 20, 20))
+        draw.arc([b_xc - r * 0.45, b_yc - r * 0.15, b_xc + r * 0.45, b_yc + r * 0.50], start=20, end=160, fill=(20, 20, 20), width=max(3, int(r * 0.08)))
+
     elif "triangle" in hint:
         half_w = (bw * scale) / 2
         top_y = min_y * scale
@@ -163,6 +185,10 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     p = prompt.lower()
     if "tree" in p or "pine" in p:
         hint = "tree"
+    elif "house" in p or "home" in p:
+        hint = "house"
+    elif "smiley" in p or "face" in p:
+        hint = "smiley"
     elif "circle" in p:
         hint = "circle"
     elif "dot" in p:
@@ -185,4 +211,5 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
             break
 
     return refine_geometry(img, shape_hint=hint, color_override=color_override)
+
 
