@@ -150,7 +150,7 @@ class TestAgenticSystem(unittest.TestCase):
         )
         self.assertIsNotNone(trace.final_image)
         self.assertIsInstance(trace.final_image, Image.Image)
-        self.assertEqual(trace.final_image.size, (64, 64))
+        self.assertEqual(trace.final_image.size, (256, 256))
         self.assertGreater(len(trace.thinking_steps), 0)
 
 

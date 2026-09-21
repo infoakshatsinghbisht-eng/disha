@@ -237,6 +237,7 @@ class MultimodalTransformer(nn.Module):
         top_p: float = 0.92,
         eos_token_id: Optional[int] = None,
         image_end_token_id: Optional[int] = None,
+        allowed_token_range: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
         """
         Autoregressive generation with KV caching, temperature, and top-p (nucleus) filtering.
@@ -249,6 +250,7 @@ class MultimodalTransformer(nn.Module):
             top_p (float): Nucleus Top-P cumulative probability threshold.
             eos_token_id (int, optional): Stop generation on this token.
             image_end_token_id (int, optional): Stop generation when image completes.
+            allowed_token_range (tuple, optional): (min_id, max_id) to strictly constrain sampling.
             
         Returns:
             torch.Tensor: Full token sequence (B, PromptLen + GeneratedLen).
@@ -264,8 +266,14 @@ class MultimodalTransformer(nn.Module):
         generated = []
 
         for step in range(max_new_tokens):
+            cur_logits = next_logits.clone()
+            if allowed_token_range is not None:
+                min_id, max_id = allowed_token_range
+                cur_logits[:, :min_id] = -float("Inf")
+                cur_logits[:, max_id:] = -float("Inf")
+
             if temperature > 0:
-                scaled_logits = next_logits / temperature
+                scaled_logits = cur_logits / temperature
 
                 # Top-K filtering
                 if top_k > 0:
@@ -283,13 +291,13 @@ class MultimodalTransformer(nn.Module):
                     sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
                     sorted_indices_to_remove[..., 0] = 0
 
-                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    indices_to_remove = torch.zeros_like(scaled_logits, dtype=torch.bool).scatter_(1, sorted_indices, sorted_indices_to_remove)
                     scaled_logits[indices_to_remove] = -float("Inf")
 
                 probs = F.softmax(scaled_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)  # (B, 1)
             else:
-                next_token = torch.argmax(next_logits, dim=-1, keepdim=True)  # (B, 1)
+                next_token = torch.argmax(cur_logits, dim=-1, keepdim=True)  # (B, 1)
 
             generated.append(next_token)
 

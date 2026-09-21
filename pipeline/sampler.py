@@ -131,34 +131,36 @@ class MultimodalGeneratorPipeline:
         prompt_tensor = torch.tensor([prefix], dtype=torch.long, device=self.device)
 
         # 3. Autoregressive Image Token Generation
+        # Constrain visual token sampling strictly to the VQ-VAE codebook space
+        min_img_token = self.text_vocab_size
+        max_img_token = self.text_vocab_size + self.vqvae.codebook_size
+
         generated_seq = self.llm.generate(
             prompt_tokens=prompt_tensor,
             max_new_tokens=self.image_token_len,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
-            image_end_token_id=self.tokenizer.image_end_id,
+            allowed_token_range=(min_img_token, max_img_token),
         )
 
         # 4. Extract generated image token slice
         full_tokens = generated_seq[0].tolist()
-        # Find index of <image_start>
         try:
             start_idx = full_tokens.index(self.tokenizer.image_start_id) + 1
         except ValueError:
             start_idx = len(prefix)
 
         img_tokens_raw = full_tokens[start_idx : start_idx + self.image_token_len]
-        
-        # If fewer tokens generated, pad with random codebook tokens
-        while len(img_tokens_raw) < self.image_token_len:
-            img_tokens_raw.append(self.text_vocab_size)
 
         # 5. Map tokens back to VQ-VAE codebook space [0, codebook_size - 1]
         img_tokens = [
             max(0, min(self.vqvae.codebook_size - 1, tok - self.text_vocab_size))
             for tok in img_tokens_raw
         ]
+        while len(img_tokens) < self.image_token_len:
+            pad_val = img_tokens[-1] if img_tokens else (self.vqvae.codebook_size // 2)
+            img_tokens.append(pad_val)
 
         # 6. Decode visual tokens into continuous RGB image tensor via VQ-VAE
         indices_tensor = torch.tensor([img_tokens], dtype=torch.long, device=self.device)
@@ -168,6 +170,8 @@ class MultimodalGeneratorPipeline:
         recon_np = recon_tensor[0].detach().cpu().clamp(-1.0, 1.0).permute(1, 2, 0).numpy()
         recon_np = ((recon_np + 1.0) * 127.5).astype(np.uint8)
         img = Image.fromarray(recon_np)
+        if img.size != (256, 256):
+            img = img.resize((256, 256), Image.Resampling.LANCZOS)
 
         if save_path:
             os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
@@ -190,13 +194,16 @@ class MultimodalGeneratorPipeline:
         prefix = [self.tokenizer.bos_id] + text_tokens + [self.tokenizer.image_start_id]
         prompt_tensor = torch.tensor([prefix], dtype=torch.long, device=self.device)
 
+        min_img_token = self.text_vocab_size
+        max_img_token = self.text_vocab_size + self.vqvae.codebook_size
+
         generated_seq = self.llm.generate(
             prompt_tokens=prompt_tensor,
             max_new_tokens=self.image_token_len,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
-            image_end_token_id=self.tokenizer.image_end_id,
+            allowed_token_range=(min_img_token, max_img_token),
         )
 
         full_tokens = generated_seq[0].tolist()
@@ -206,13 +213,14 @@ class MultimodalGeneratorPipeline:
             start_idx = len(prefix)
 
         img_tokens_raw = full_tokens[start_idx : start_idx + self.image_token_len]
-        while len(img_tokens_raw) < self.image_token_len:
-            img_tokens_raw.append(self.text_vocab_size)
 
         img_tokens = [
             max(0, min(self.vqvae.codebook_size - 1, tok - self.text_vocab_size))
             for tok in img_tokens_raw
         ]
+        while len(img_tokens) < self.image_token_len:
+            pad_val = img_tokens[-1] if img_tokens else (self.vqvae.codebook_size // 2)
+            img_tokens.append(pad_val)
 
         indices_tensor = torch.tensor([img_tokens], dtype=torch.long, device=self.device)
         recon_tensor = self.vqvae.decode_from_indices(indices_tensor)
