@@ -59,16 +59,25 @@ bllm/
 │   ├── attention.py       # Grouped Query Attention (GQA) & KV-Cache
 │   ├── mlp.py             # SwiGLU Feed-Forward Network
 │   └── transformer.py     # Multimodal Transformer Decoder
+├── agent/                 # 🤖 Agentic Intelligence & Cognitive Layer
+│   ├── __init__.py
+│   ├── schema.py          # ToolCall, ToolResponse, CriticReport, ThinkingStep
+│   ├── critic.py          # Visual Quality Inspector (sharpness, contrast, score)
+│   ├── tools.py           # Autonomous tool dispatch registry
+│   └── reasoner.py        # CoT (<think>) reasoner & ReAct reflection loop
 ├── pipeline/
 │   ├── __init__.py
 │   ├── dataset.py         # Synthetic dataset generator & causal data loader
-│   └── sampler.py         # End-to-end Text-to-Image Generation Pipeline
+│   ├── sampler.py         # End-to-end Text-to-Image Generation Pipeline
+│   └── agentic_pipeline.py# End-to-end Agentic ReAct Pipeline
 ├── train_vqvae.py         # Visual tokenizer pre-training script
 ├── train_llm.py           # Multimodal LLM causal pre-training script
 ├── generate.py            # CLI text-to-image inference script
-├── demo_web.py            # Modern interactive web UI
+├── generate_agentic.py    # 🤖 CLI Agentic ReAct generation script
+├── app_production.py      # Production Web Studio with Live CoT Inspector
 ├── tests/
-│   └── test_all.py        # Comprehensive test suite
+│   ├── test_all.py        # Core model test suite
+│   └── test_agentic.py    # 🤖 Agentic & Visual Critic test suite
 └── requirements.txt       # Dependencies
 ```
 
@@ -98,6 +107,18 @@ python generate.py --prompt "a vibrant red glowing circle on dark background" --
 
 ### 5. Launch Interactive Web Studio
 ```bash
-python demo_web.py
+python app_production.py
 ```
-Open your browser at `http://localhost:7860`.
+Open your browser at `http://localhost:7860`. Includes real-time **🤖 Agentic Reasoning & Critic Mode** toggle with live `<think>` inspection.
+
+### 6. Run Agentic Image Generation via CLI (Recommendation 3)
+```bash
+# Run autonomous ReAct loop with Chain-of-Thought (<think>) & Visual Quality Critic
+python generate_agentic.py --prompt "a cybernetic tiger in a rainy neon alley" --engine scratch
+
+# Ultra-HD Studio Diffusion with photorealistic style
+python generate_agentic.py --prompt "majestic snowy mountain landscape" --engine hd --style "Photorealistic"
+
+# Run Agentic test suite
+python -m unittest tests/test_agentic.py
+```

@@ -503,6 +503,13 @@ HTML_PAGE = """
                         <label>Seed (-1 = Random)</label>
                         <input type="text" id="seedInput" value="-1" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">
                     </div>
+                    <div class="control-box" style="grid-column: span 3; display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1rem; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 0.5rem;">
+                        <div>
+                            <span style="color: #a5b4fc; font-weight: 700; font-size: 0.9rem;">🤖 Agentic Reasoning & Critic Mode</span>
+                            <div style="font-size: 0.72rem; color: var(--text-muted);">&lt;think&gt; CoT • Autonomous Visual Critic • ReAct Loop</div>
+                        </div>
+                        <input type="checkbox" id="agenticToggle" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: #6366f1;">
+                    </div>
                 </div>
 
                 <button class="btn-generate" id="generateBtn" onclick="triggerGeneration()">
@@ -552,6 +559,16 @@ HTML_PAGE = """
                     <button class="btn-action" onclick="copyPrompt()">📋 Copy Prompt</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Agentic Reasoning & Critic Inspector Card -->
+        <div class="card" id="agenticInspectorCard" style="margin-top: 1.5rem; display: none;">
+            <div class="card-header">
+                <h2>🧠 Agentic Chain-of-Thought & Critic Inspector</h2>
+                <span id="agenticBadge" style="font-size: 0.8rem; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 0.25rem 0.75rem; border-radius: 9999px;">Ready</span>
+            </div>
+            <div id="criticSummaryBar" style="display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;"></div>
+            <div id="thinkingStepsContainer" style="display: flex; flex-direction: column; gap: 0.6rem; max-height: 320px; overflow-y: auto; padding-right: 0.5rem;"></div>
         </div>
     </div>
 
@@ -612,7 +629,21 @@ HTML_PAGE = """
             tokenGrid.style.display = 'grid';
             placeholder.style.display = 'none';
             mainImg.style.display = 'none';
-            genStatus.innerText = 'Streaming Tokens...';
+
+            const isAgentic = document.getElementById('agenticToggle') && document.getElementById('agenticToggle').checked;
+            const inspector = document.getElementById('agenticInspectorCard');
+            const stepsContainer = document.getElementById('thinkingStepsContainer');
+            const criticSummary = document.getElementById('criticSummaryBar');
+            const agenticBadge = document.getElementById('agenticBadge');
+
+            if (isAgentic) {
+                genStatus.innerText = 'ReAct Loop Running...';
+                if (inspector) inspector.style.display = 'block';
+                if (stepsContainer) stepsContainer.innerHTML = '<div style="color: #a5b4fc; font-size: 0.85rem; padding: 0.5rem;">Thinking & Planning with &lt;think&gt; tokens...</div>';
+                if (agenticBadge) agenticBadge.innerText = 'Reasoning...';
+            } else {
+                genStatus.innerText = 'Streaming Tokens...';
+            }
 
             // Animate token generation in visualizer
             let tokenIdx = 0;
@@ -627,10 +658,15 @@ HTML_PAGE = """
             const startT = performance.now();
 
             try {
-                const res = await fetch('/api/generate', {
+                const endpoint = isAgentic ? '/api/generate_agentic' : '/api/generate';
+                const payload = isAgentic
+                    ? { prompt, engine: 'scratch', style: selectedStyle, auto_refine: true, threshold: 7.0 }
+                    : { prompt, temperature: temp, top_p: topP, seed };
+
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt, temperature: temp, top_p: topP, seed })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await res.json();
@@ -644,10 +680,53 @@ HTML_PAGE = """
 
                     const elapsed = Math.round(performance.now() - startT);
                     document.getElementById('metricTime').innerText = elapsed + ' ms';
-                    document.getElementById('metricKvCache').innerText = data.kv_cache_kb + ' KB';
+                    if (data.kv_cache_kb) document.getElementById('metricKvCache').innerText = data.kv_cache_kb + ' KB';
                     document.getElementById('metricRamPeak').innerText = data.process_ram_mb + ' MB';
                     document.getElementById('hostRamUsage').innerText = data.host_ram_used_gb + ' / ' + data.host_ram_total_gb + ' GB';
-                    genStatus.innerText = 'Completed in ' + elapsed + 'ms';
+
+                    if (isAgentic) {
+                        genStatus.innerText = 'Agentic Goal Achieved (' + data.total_iterations + ' loops)';
+                        if (agenticBadge) agenticBadge.innerText = 'Complete (' + data.total_iterations + ' loops)';
+
+                        // Render Critic Summary
+                        if (criticSummary && data.critic_reports && data.critic_reports.length > 0) {
+                            const lastCrit = data.critic_reports[data.critic_reports.length - 1];
+                            criticSummary.innerHTML = `
+                                <div class="telemetry-pill" style="border-color: rgba(56, 189, 248, 0.4);">
+                                    <span>Aesthetic Score: <strong style="color: #38bdf8;">${lastCrit.aesthetic_score}/10</strong> (${lastCrit.status})</span>
+                                </div>
+                                <div class="telemetry-pill">
+                                    <span>Sharpness: <strong style="color: #a5b4fc;">${lastCrit.sharpness}</strong> var</span>
+                                </div>
+                                <div class="telemetry-pill">
+                                    <span>Contrast: <strong style="color: #a5b4fc;">${lastCrit.contrast}</strong> std</span>
+                                </div>
+                            `;
+                        }
+
+                        // Render Thinking Steps
+                        if (stepsContainer && data.thinking_steps) {
+                            stepsContainer.innerHTML = data.thinking_steps.map(s => {
+                                let badgeColor = '#6366f1';
+                                if (s.phase === 'CRITIQUE') badgeColor = '#f59e0b';
+                                else if (s.phase === 'REFLECTION') badgeColor = '#ec4899';
+                                else if (s.phase === 'CONCLUSION') badgeColor = '#10b981';
+
+                                const cleanThought = s.thought.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                return `
+                                    <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 0.5rem; padding: 0.6rem 0.8rem; font-family: 'JetBrains Mono', monospace; font-size: 0.76rem;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                            <span style="color: ${badgeColor}; font-weight: 700;">Step ${s.step_number}: ${s.phase}</span>
+                                            ${s.tool ? `<span style="color: #38bdf8;">🛠️ ${s.tool}</span>` : ''}
+                                        </div>
+                                        <pre style="white-space: pre-wrap; color: var(--text-muted); line-height: 1.4; margin: 0;">${cleanThought}</pre>
+                                    </div>
+                                `;
+                            }).join('');
+                        }
+                    } else {
+                        genStatus.innerText = 'Completed in ' + elapsed + 'ms';
+                    }
                 } else {
                     alert('Error: ' + data.error);
                     placeholder.style.display = 'block';
@@ -768,6 +847,96 @@ def generate_api():
             "host_ram_total_gb": round(vmem.total / (1024**3), 1),
             "elapsed_ms": round(elapsed_sec * 1000),
             "generation_time_s": round(elapsed_sec, 2),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+AGENTIC_PIPELINE = None
+
+
+def init_agentic_pipeline():
+    global AGENTIC_PIPELINE
+    if AGENTIC_PIPELINE is None:
+        from pipeline.agentic_pipeline import AgenticImagePipeline
+        from config import AgenticConfig
+        scratch_pipe = init_master_pipeline()
+        AGENTIC_PIPELINE = AgenticImagePipeline(
+            scratch_pipeline=scratch_pipe,
+            config=AgenticConfig(),
+            device=DEVICE,
+        )
+    return AGENTIC_PIPELINE
+
+
+@app.route("/api/generate_agentic", methods=["POST"])
+def generate_agentic_api():
+    try:
+        data = request.get_json() or {}
+        prompt = data.get("prompt", "a glowing celestial phoenix rising from crystal peaks")
+        engine = data.get("engine", "scratch")
+        style = data.get("style", None)
+        auto_refine = bool(data.get("auto_refine", True))
+        threshold = float(data.get("threshold", 7.0))
+
+        pipe = init_agentic_pipeline()
+        pipe.reasoner.aesthetic_threshold = threshold
+        pipe.registry.critic.aesthetic_threshold = threshold
+
+        trace = pipe.run(
+            prompt=prompt,
+            engine=engine,
+            style=style,
+            auto_refine=auto_refine,
+        )
+
+        img_b64 = None
+        if trace.final_image is not None:
+            buf = io.BytesIO()
+            trace.final_image.save(buf, format="PNG")
+            img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        steps_data = [
+            {
+                "step_number": s.step_number,
+                "phase": s.phase,
+                "thought": s.thought,
+                "tool": s.tool_call.name if s.tool_call else None,
+            }
+            for s in trace.thinking_steps
+        ]
+
+        critique_data = [
+            {
+                "sharpness": r.sharpness,
+                "contrast": r.contrast,
+                "dynamic_range": r.dynamic_range,
+                "color_richness": r.color_richness,
+                "aesthetic_score": r.aesthetic_score,
+                "status": r.status,
+                "critique": r.critique,
+                "suggested_refinements": r.suggested_refinements,
+            }
+            for r in trace.critic_reports
+        ]
+
+        proc = psutil.Process()
+        proc_ram_mb = round(proc.memory_info().rss / (1024**2), 1)
+        vmem = psutil.virtual_memory()
+
+        return jsonify({
+            "success": True,
+            "image_base64": img_b64,
+            "user_prompt": trace.user_prompt,
+            "final_prompt": trace.final_prompt,
+            "engine": trace.engine_used,
+            "total_iterations": trace.total_iterations,
+            "execution_time_sec": trace.execution_time_sec,
+            "thinking_steps": steps_data,
+            "critic_reports": critique_data,
+            "process_ram_mb": proc_ram_mb,
+            "host_ram_used_gb": round(vmem.used / (1024**3), 1),
+            "host_ram_total_gb": round(vmem.total / (1024**3), 1),
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

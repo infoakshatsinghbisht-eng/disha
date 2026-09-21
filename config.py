@@ -37,6 +37,14 @@ class TokenizerConfig:
         "<text_start>",
         "<text_end>",
         "<unk>",
+        "<think>",
+        "</think>",
+        "<tool_call>",
+        "</tool_call>",
+        "<tool_response>",
+        "</tool_response>",
+        "<plan>",
+        "</plan>",
     )
 
 
@@ -81,3 +89,13 @@ class GenerationConfig:
     cfg_scale: float = 1.5
     repetition_penalty: float = 1.05
     max_new_tokens: int = 256
+
+
+@dataclass
+class AgenticConfig:
+    max_refinement_steps: int = 2
+    aesthetic_threshold: float = 7.0
+    critic_enabled: bool = True
+    default_engine: str = "scratch"  # "scratch" or "sdxl-turbo"
+    auto_refine: bool = True
+    temperature: float = 0.7

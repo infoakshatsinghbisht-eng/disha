@@ -27,6 +27,7 @@ def run_2b_training(
     num_layers: Optional[int] = None,
     num_heads: Optional[int] = None,
     force_2b: bool = False,
+    data_dir: Optional[str] = None,
 ):
     start_total = time.time()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -34,20 +35,26 @@ def run_2b_training(
     print(f"[*] STARTING 2.0 BILLION PARAMETER MULTIMODAL MODEL TRAINING ON {device.upper()}")
     print("=" * 75)
 
-    data_dir = "data_web_scraped"
+    if data_dir is None:
+        if os.path.exists("dataset_cloud/train") and len(os.listdir("dataset_cloud/train")) >= 50:
+            data_dir = "dataset_cloud"
+        else:
+            data_dir = "data_web_scraped"
+
     train_dir = os.path.join(data_dir, "train")
 
     # 1. Verify / Scrape Web Dataset
-    print("\n--- [1/4] Verifying Internet Scraped Dataset ---")
-    if not os.path.exists(train_dir) or len(os.listdir(train_dir)) < 100:
-        scrape_internet_dataset(
+    print(f"\n--- [1/4] Verifying Training Dataset in '{data_dir}' ---")
+    if not os.path.exists(train_dir) or len(os.listdir(train_dir)) < 50:
+        from prepare_cloud_dataset import build_cloud_dataset
+        build_cloud_dataset(
             output_dir=data_dir,
-            num_train=num_train,
-            num_val=num_val,
+            target_train_count=num_train,
+            target_val_count=num_val,
             image_size=256,
         )
     else:
-        print(f"[+] Internet dataset ready in {data_dir}/ with {len(os.listdir(train_dir)) // 2} image-text pairs.")
+        print(f"[+] Dataset ready in {data_dir}/ with {len(os.listdir(train_dir)) // 2} image-text pairs.")
 
     # 2. Train VQ-VAE on Scraped Web Photos
     print("\n--- [2/4] Training Discrete Visual Tokenizer (VQ-VAE) with Sobel Edge Loss ---")
@@ -125,6 +132,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_layers", type=int, default=None, help="Number of transformer layers")
     parser.add_argument("--num_heads", type=int, default=None, help="Number of attention heads")
     parser.add_argument("--force_2b", action="store_true", help="Force full 2B architecture (requires 40GB+ A100 GPU)")
+    parser.add_argument("--data_dir", type=str, default=None, help="Path to training dataset folder (e.g. dataset_cloud)")
     args = parser.parse_args()
 
     run_2b_training(
@@ -137,4 +145,5 @@ if __name__ == "__main__":
         num_layers=args.num_layers,
         num_heads=args.num_heads,
         force_2b=args.force_2b,
+        data_dir=args.data_dir,
     )

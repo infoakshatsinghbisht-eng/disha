@@ -24,6 +24,14 @@ class ByteTokenizer:
         "<text_start>",
         "<text_end>",
         "<unk>",
+        "<think>",
+        "</think>",
+        "<tool_call>",
+        "</tool_call>",
+        "<tool_response>",
+        "</tool_response>",
+        "<plan>",
+        "</plan>",
     ]
 
     def __init__(self, vocab_file: Optional[str] = None):
@@ -39,6 +47,16 @@ class ByteTokenizer:
         self.text_start_id = self.special_to_id["<text_start>"]
         self.text_end_id = self.special_to_id["<text_end>"]
         self.unk_id = self.special_to_id["<unk>"]
+        
+        # Agentic tokens
+        self.think_start_id = self.special_to_id["<think>"]
+        self.think_end_id = self.special_to_id["</think>"]
+        self.tool_call_start_id = self.special_to_id["<tool_call>"]
+        self.tool_call_end_id = self.special_to_id["</tool_call>"]
+        self.tool_resp_start_id = self.special_to_id["<tool_response>"]
+        self.tool_resp_end_id = self.special_to_id["</tool_response>"]
+        self.plan_start_id = self.special_to_id["<plan>"]
+        self.plan_end_id = self.special_to_id["</plan>"]
         
         # 2. Byte tokens start right after special tokens
         self.byte_offset = len(self.SPECIAL_TOKENS)

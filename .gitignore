@@ -43,3 +43,13 @@ venv.bak/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Project Data & Checkpoints (except compressed archive)
+dataset_cloud/
+dataset_sharded/
+data_master/
+checkpoints/
+checkpoints_cloud/
+*.jpg
+output_agentic_test.png
+

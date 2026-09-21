@@ -67,7 +67,19 @@ class MultimodalGeneratorPipeline:
             rope_theta=getattr(llm_cfg, "rope_theta", 10000.0),
         )
         if "llm_state_dict" in ckpt:
-            llm.load_state_dict(ckpt["llm_state_dict"])
+            state_dict = dict(ckpt["llm_state_dict"])
+            # Gracefully handle vocabulary expansion (e.g. newly added agentic tokens)
+            model_sd = llm.state_dict()
+            for key in ["tok_embeddings.weight", "output.weight"]:
+                if key in state_dict and key in model_sd:
+                    ckpt_w = state_dict[key]
+                    target_w = model_sd[key]
+                    if ckpt_w.shape != target_w.shape and ckpt_w.shape[1] == target_w.shape[1]:
+                        min_rows = min(ckpt_w.shape[0], target_w.shape[0])
+                        new_w = target_w.clone()
+                        new_w[:min_rows] = ckpt_w[:min_rows]
+                        state_dict[key] = new_w
+            llm.load_state_dict(state_dict, strict=False)
 
         vqvae = VQVAE(
             in_channels=getattr(vq_cfg, "in_channels", 3),
