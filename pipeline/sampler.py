@@ -257,6 +257,13 @@ class MultimodalGeneratorPipeline:
         if img.size != (256, 256):
             img = img.resize((256, 256), Image.Resampling.LANCZOS)
 
+        if refine_vector:
+            try:
+                from pipeline.vector_refiner import refine_geometry_from_prompt
+                img = refine_geometry_from_prompt(img, prompt)
+            except Exception as e:
+                print(f"[!] Vector refinement skipped: {e}")
+
         if save_path:
             os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
             img.save(save_path)

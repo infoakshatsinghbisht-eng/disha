@@ -1,0 +1,159 @@
+"""
+Geometric Vector Refiner for Disha Multimodal Architecture.
+Converts 16x16 discrete codebook token images into razor-sharp, mathematically smooth
+vector graphics by estimating geometric moments and rendering anti-aliased vector contours.
+"""
+
+from typing import Tuple, Optional, Dict, Any
+import numpy as np
+from PIL import Image, ImageDraw
+
+
+def detect_palette(np_img: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Estimates background color from corners and foreground mask.
+    Snaps near-white corners to pure white, near-black to pure black.
+    """
+    H, W, _ = np_img.shape
+    corners = np.concatenate([
+        np_img[:12, :12].reshape(-1, 3),
+        np_img[:12, -12:].reshape(-1, 3),
+        np_img[-12:, :12].reshape(-1, 3),
+        np_img[-12:, -12:].reshape(-1, 3),
+    ])
+    bg_col = np.median(corners, axis=0)
+    # Snap clean canvas backgrounds
+    if np.mean(bg_col) > 225:
+        bg_col = np.array([255, 255, 255], dtype=float)
+    elif np.mean(bg_col) < 30:
+        bg_col = np.array([0, 0, 0], dtype=float)
+
+    dist = np.linalg.norm(np_img.astype(float) - bg_col.astype(float), axis=-1)
+    fg_mask = dist > 40.0
+
+    if not np.any(fg_mask):
+        fg_col = np.array([220, 30, 40], dtype=float)
+    else:
+        # Sample core foreground pixels with highest distance from background
+        top_dist_thresh = np.percentile(dist[fg_mask], 75)
+        core_pixels = np_img[dist >= top_dist_thresh]
+        if len(core_pixels) > 0:
+            fg_col = np.median(core_pixels, axis=0)
+        else:
+            fg_col = np.median(np_img[fg_mask], axis=0)
+
+    return bg_col, fg_col, fg_mask
+
+
+COLOR_PALETTES = {
+    "red": (225, 30, 40),
+    "blue": (30, 100, 230),
+    "green": (35, 175, 55),
+    "yellow": (250, 205, 30),
+    "black": (20, 20, 20),
+    "white": (255, 255, 255),
+    "purple": (150, 50, 200),
+    "orange": (245, 125, 25),
+    "pink": (245, 105, 160),
+    "cyan": (30, 200, 225),
+}
+
+
+def refine_geometry(
+    img: Image.Image,
+    shape_hint: str = "auto",
+    color_override: Optional[Tuple[int, int, int]] = None,
+) -> Image.Image:
+    """
+    Refines a raster image into a crisp, mathematically perfect vector-rendered primitive.
+    Supported shapes: circle, dot, line, square, triangle, polygon.
+    """
+    np_img = np.array(img)
+    H, W, _ = np_img.shape
+
+    bg_col, fg_col, fg_mask = detect_palette(np_img)
+    if not np.any(fg_mask):
+        return img
+
+    y_idx, x_idx = np.where(fg_mask)
+    xc = float(np.mean(x_idx))
+    yc = float(np.mean(y_idx))
+    min_x, max_x = int(np.min(x_idx)), int(np.max(x_idx))
+    min_y, max_y = int(np.min(y_idx)), int(np.max(y_idx))
+    bw = max(1, max_x - min_x)
+    bh = max(1, max_y - min_y)
+
+    scale = 4
+    big_size = H * scale
+    big_img = Image.new("RGB", (big_size, big_size), tuple(bg_col.astype(int)))
+    draw = ImageDraw.Draw(big_img)
+
+    b_xc = xc * scale
+    b_yc = yc * scale
+    fg_rgb = color_override if color_override is not None else tuple(fg_col.astype(int))
+
+    hint = shape_hint.lower()
+
+    if "circle" in hint or "dot" in hint or ("line" not in hint and "square" not in hint and "triangle" not in hint and abs(bw - bh) < 30):
+        # Circle / Dot
+        radial_d = np.sqrt((x_idx - xc) ** 2 + (y_idx - yc) ** 2)
+        r = float(np.percentile(radial_d, 92)) * scale
+        draw.ellipse([b_xc - r, b_yc - r, b_xc + r, b_yc + r], fill=fg_rgb)
+
+    elif "line" in hint:
+        if bw > bh * 1.5:
+            # Horizontal line
+            w = float(bh) * scale
+            draw.line([(min_x * scale, b_yc), (max_x * scale, b_yc)], fill=fg_rgb, width=max(4, int(w)))
+        else:
+            # Vertical line
+            w = float(bw) * scale
+            draw.line([(b_xc, min_y * scale), (b_xc, max_y * scale)], fill=fg_rgb, width=max(4, int(w)))
+
+    elif "square" in hint:
+        half_w = (bw * scale) / 2
+        half_h = (bh * scale) / 2
+        draw.rectangle([b_xc - half_w, b_yc - half_h, b_xc + half_w, b_yc + half_h], fill=fg_rgb)
+
+    elif "triangle" in hint:
+        half_w = (bw * scale) / 2
+        top_y = min_y * scale
+        bot_y = max_y * scale
+        pts = [(b_xc, top_y), (b_xc - half_w, bot_y), (b_xc + half_w, bot_y)]
+        draw.polygon(pts, fill=fg_rgb)
+
+    else:
+        # Default smooth ellipse
+        radial_d = np.sqrt((x_idx - xc) ** 2 + (y_idx - yc) ** 2)
+        r = float(np.percentile(radial_d, 92)) * scale
+        draw.ellipse([b_xc - r, b_yc - r, b_xc + r, b_yc + r], fill=fg_rgb)
+
+    return big_img.resize((W, H), Image.Resampling.LANCZOS)
+
+
+def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
+    """
+    Infers the shape type and color from text prompt and executes crisp vector refinement.
+    """
+    p = prompt.lower()
+    if "circle" in p:
+        hint = "circle"
+    elif "dot" in p:
+        hint = "dot"
+    elif "line" in p:
+        hint = "line"
+    elif "square" in p:
+        hint = "square"
+    elif "triangle" in p:
+        hint = "triangle"
+    else:
+        hint = "auto"
+
+    color_override = None
+    for c_name, c_val in COLOR_PALETTES.items():
+        if f" {c_name} " in f" {p} " or p.startswith(f"{c_name} ") or p.endswith(f" {c_name}"):
+            color_override = c_val
+            break
+
+    return refine_geometry(img, shape_hint=hint, color_override=color_override)
+

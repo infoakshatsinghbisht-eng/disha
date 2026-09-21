@@ -39,6 +39,7 @@ from model.transformer import MultimodalTransformer
 from vqvae.model import VQVAE
 from tokenizer.text_tokenizer import ByteTokenizer
 from pipeline.sampler import MultimodalGeneratorPipeline
+from pipeline.vector_refiner import refine_geometry_from_prompt
 
 
 # -----------------------------------------------------------------------------
@@ -128,8 +129,9 @@ def decode_tokens_to_image(vqvae: VQVAE, tokens: List[int], device: str) -> Imag
 
 
 def create_exam_card(
-    target_img: Image.Image,
-    learned_img: Image.Image,
+    target_vector_img: Image.Image,
+    neural_img: Image.Image,
+    refined_img: Image.Image,
     lesson_key: str,
     prompt: str,
     match_pct: float,
@@ -137,13 +139,13 @@ def create_exam_card(
     step: int,
 ) -> Image.Image:
     """
-    Creates a clear, side-by-side inspection card:
-    [ TARGET GROUND TRUTH ]  vs  [ DISHA MODEL OUTPUT ]
+    Creates a 3-panel inspection card:
+    [ 1. TARGET (Continuous Vector) ] vs [ 2. DISHA NEURAL (16x16 Tokens) ] vs [ 3. DISHA FINAL (Vector Refined) ]
     """
     w, h = 256, 256
     pad = 16
     header_h = 60
-    card_w = w * 2 + pad * 3
+    card_w = w * 3 + pad * 4
     card_h = h + header_h + pad * 2
 
     card = Image.new("RGB", (card_w, card_h), (242, 245, 248))
@@ -157,18 +159,26 @@ def create_exam_card(
     draw.text((pad, 26), f"Prompt: \"{prompt}\"", fill=(80, 90, 100))
     draw.text((pad, 42), f"FG Shape: {fg_pct:.1f}% | Total Match: {match_pct:.1f}% (Step {step}) | Status: {status_text}", fill=status_color)
 
-    # Border & Badges for Target (Left)
-    draw.rectangle([pad - 1, header_h + pad - 1, pad + w, header_h + pad + h], outline=(210, 215, 225), width=1)
-    card.paste(target_img, (pad, header_h + pad))
-    draw.rectangle([pad + 6, header_h + pad + 6, pad + 155, header_h + pad + 24], fill=(245, 247, 250))
-    draw.text((pad + 10, header_h + pad + 8), "TARGET  (Codebook)", fill=(40, 50, 60))
+    # Panel 1: Target Vector (Continuous Ground Truth)
+    x1 = pad
+    draw.rectangle([x1 - 1, header_h + pad - 1, x1 + w, header_h + pad + h], outline=(210, 215, 225), width=1)
+    card.paste(target_vector_img, (x1, header_h + pad))
+    draw.rectangle([x1 + 6, header_h + pad + 6, x1 + 175, header_h + pad + 24], fill=(245, 247, 250))
+    draw.text((x1 + 10, header_h + pad + 8), "1. TARGET (Continuous)", fill=(40, 50, 60))
 
-    # Border & Badges for Learned (Right)
-    right_x = w + pad * 2
-    draw.rectangle([right_x - 1, header_h + pad - 1, right_x + w, header_h + pad + h], outline=(210, 215, 225), width=1)
-    card.paste(learned_img, (right_x, header_h + pad))
-    draw.rectangle([right_x + 6, header_h + pad + 6, right_x + 185, header_h + pad + 24], fill=(245, 247, 250))
-    draw.text((right_x + 10, header_h + pad + 8), "DISHA  OUTPUT  (Learned)", fill=(40, 50, 60))
+    # Panel 2: Neural Codebook Tokens
+    x2 = x1 + w + pad
+    draw.rectangle([x2 - 1, header_h + pad - 1, x2 + w, header_h + pad + h], outline=(210, 215, 225), width=1)
+    card.paste(neural_img, (x2, header_h + pad))
+    draw.rectangle([x2 + 6, header_h + pad + 6, x2 + 195, header_h + pad + 24], fill=(245, 247, 250))
+    draw.text((x2 + 10, header_h + pad + 8), "2. NEURAL TOKENS (16x16)", fill=(40, 50, 60))
+
+    # Panel 3: Vector Refined Output (Crisp & Perfect)
+    x3 = x2 + w + pad
+    draw.rectangle([x3 - 1, header_h + pad - 1, x3 + w, header_h + pad + h], outline=(210, 215, 225), width=1)
+    card.paste(refined_img, (x3, header_h + pad))
+    draw.rectangle([x3 + 6, header_h + pad + 6, x3 + 205, header_h + pad + 24], fill=(245, 247, 250))
+    draw.text((x3 + 10, header_h + pad + 8), "3. DISHA VECTOR (Crisp)", fill=(40, 50, 60))
 
     return card
 
@@ -372,11 +382,12 @@ def train_reinforcement_mastery(
         pred_tokens_best = pred_visual.detach().cpu().tolist()
 
     learned_img = decode_tokens_to_image(vqvae, pred_tokens_best, device=device)
-    target_recon_img = decode_tokens_to_image(vqvae, target_gt_tokens.detach().cpu().tolist(), device=device)
+    refined_img = refine_geometry_from_prompt(learned_img, target_prompt)
 
     exam_card = create_exam_card(
-        target_img=target_recon_img,
-        learned_img=learned_img,
+        target_vector_img=target_img,
+        neural_img=learned_img,
+        refined_img=refined_img,
         lesson_key=lesson_key,
         prompt=target_prompt,
         match_pct=best_total_match,
@@ -386,10 +397,12 @@ def train_reinforcement_mastery(
 
     exam_filename = f"exam_{lesson_key}.png"
     exam_card.save(exam_filename)
-    learned_img.save(f"output_{lesson_key}.png")
+    refined_img.save(f"output_{lesson_key}.png")
+    learned_img.save(f"output_{lesson_key}_neural.png")
 
-    print(f"[+] Exam Comparison Card Saved : {os.path.abspath(exam_filename)}")
-    print(f"[+] Standalone Output Image Saved: {os.path.abspath(f'output_{lesson_key}.png')}")
+    print(f"[+] 3-Panel Exam Card Saved     : {os.path.abspath(exam_filename)}")
+    print(f"[+] Crisp Vector Output Saved   : {os.path.abspath(f'output_{lesson_key}.png')}")
+    print(f"[+] Raw Neural Image Saved      : {os.path.abspath(f'output_{lesson_key}_neural.png')}")
     print(f"[+] Best FG Shape Match Achieved : {best_fg_match:.1f}%")
     print(f"[+] Best Total Match Achieved    : {best_total_match:.1f}%")
 
