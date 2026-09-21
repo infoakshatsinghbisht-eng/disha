@@ -105,7 +105,57 @@ def refine_geometry(
 
     hint = shape_hint.lower()
 
-    if hint == "scene_house_tree":
+    if hint == "scene_landscape_day":
+        # Level 4 Scene 1: Blue Sky + Green Grass + House + Tree + Sun
+        draw.rectangle([0, 0, big_size, int(big_size * 0.60)], fill=(125, 211, 252))
+        draw.rectangle([0, int(big_size * 0.60), big_size, big_size], fill=(74, 222, 128))
+        draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
+        # House
+        draw.rectangle([cx - 400, cy + 50, cx - 120, cy + 320], fill=(254, 243, 199))
+        draw.polygon([(cx - 260, cy - 150), (cx - 430, cy + 60), (cx - 90, cy + 60)], fill=(225, 29, 72))
+        # Tree
+        draw.rectangle([cx + 200, cy + 100, cx + 260, cy + 320], fill=(139, 69, 19))
+        draw.polygon([(cx + 230, cy - 180), (cx + 90, cy + 120), (cx + 370, cy + 120)], fill=(34, 160, 68))
+
+    elif hint == "scene_landscape_night":
+        # Level 4 Scene 2: Midnight Navy Sky + Dark Ground + Moon + Glowing Window
+        draw.rectangle([0, 0, big_size, int(big_size * 0.65)], fill=(15, 23, 42))
+        draw.rectangle([0, int(big_size * 0.65), big_size, big_size], fill=(30, 41, 59))
+        draw.ellipse([cx + 240, cy - 380, cx + 380, cy - 240], fill=(254, 240, 138))
+        # House
+        draw.rectangle([cx - 180, cy + 60, cx + 180, cy + 320], fill=(51, 65, 85))
+        draw.polygon([(cx, cy - 140), (cx - 210, cy + 70), (cx + 210, cy + 70)], fill=(147, 51, 234))
+        draw.rectangle([cx - 50, cy + 140, cx + 50, cy + 240], fill=(250, 204, 21))
+
+    elif hint == "scene_car_road":
+        # Level 4 Scene 3: Sky + Grass + Charcoal Grey Road + Blue Sports Car
+        draw.rectangle([0, 0, big_size, int(big_size * 0.50)], fill=(125, 211, 252))
+        draw.rectangle([0, int(big_size * 0.50), big_size, int(big_size * 0.70)], fill=(74, 222, 128))
+        draw.rectangle([0, int(big_size * 0.70), big_size, big_size], fill=(71, 85, 105))
+        draw.rectangle([0, int(big_size * 0.84), big_size, int(big_size * 0.86)], fill=(250, 204, 21))
+        draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
+        # Tree on Grass
+        draw.rectangle([cx - 300, cy + 40, cx - 260, cy + 190], fill=(139, 69, 19))
+        draw.polygon([(cx - 280, cy - 120), (cx - 390, cy + 60), (cx - 170, cy + 60)], fill=(34, 160, 68))
+        # Blue Car on Road
+        draw.rectangle([cx + 40, cy + 110, cx + 420, cy + 240], fill=(37, 99, 235))
+        draw.rectangle([cx + 140, cy + 20, cx + 320, cy + 110], fill=(37, 99, 235))
+        draw.ellipse([cx + 120 - 36, cy + 240 - 36, cx + 120 + 36, cy + 240 + 36], fill=(30, 30, 30))
+        draw.ellipse([cx + 340 - 36, cy + 240 - 36, cx + 340 + 36, cy + 240 + 36], fill=(30, 30, 30))
+
+    elif hint == "scene_cottage_colors":
+        # Level 4 Scene 4: Blue Sky + Green Grass + Pastel Yellow Cottage + Purple Roof
+        draw.rectangle([0, 0, big_size, int(big_size * 0.60)], fill=(125, 211, 252))
+        draw.rectangle([0, int(big_size * 0.60), big_size, big_size], fill=(74, 222, 128))
+        draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
+        # Yellow Cottage with Purple Roof
+        draw.rectangle([cx - 400, cy + 50, cx - 120, cy + 320], fill=(254, 240, 138))
+        draw.polygon([(cx - 260, cy - 150), (cx - 430, cy + 60), (cx - 90, cy + 60)], fill=(168, 85, 247))
+        # Tree
+        draw.rectangle([cx + 200, cy + 100, cx + 260, cy + 320], fill=(139, 69, 19))
+        draw.polygon([(cx + 230, cy - 180), (cx + 90, cy + 120), (cx + 370, cy + 120)], fill=(34, 160, 68))
+
+    elif hint == "scene_house_tree":
         # Multi-Object Scene 1: House on Left, Pine Tree on Right
         # 1. House (Left)
         draw.rectangle([cx - 380, cy + 20, cx - 80, cy + 320], fill=(56, 189, 248))
@@ -239,7 +289,15 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     Separates foreground shape from background descriptor to avoid accidental color override.
     """
     p = prompt.lower()
-    if ("house" in p or "home" in p) and ("tree" in p or "pine" in p):
+    if "night" in p or "moon" in p:
+        hint = "scene_landscape_night"
+    elif ("road" in p or "street" in p) and "car" in p:
+        hint = "scene_car_road"
+    elif "purple roof" in p or ("yellow" in p and "cottage" in p):
+        hint = "scene_cottage_colors"
+    elif ("blue sky" in p or "green grass" in p or "grass" in p) and ("house" in p or "tree" in p):
+        hint = "scene_landscape_day"
+    elif ("house" in p or "home" in p) and ("tree" in p or "pine" in p):
         hint = "scene_house_tree"
     elif ("house" in p or "home" in p) and ("sun" in p):
         hint = "scene_house_sun"
