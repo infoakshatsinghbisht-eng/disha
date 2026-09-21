@@ -121,6 +121,11 @@ def main():
         default="cuda" if torch.cuda.is_available() else "cpu",
         help="Compute device (cuda / cpu)",
     )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Open and display the generated image in default viewer",
+    )
 
     args = parser.parse_args()
     print_banner()
@@ -170,6 +175,20 @@ def main():
             print(f"[*] Final Sharpness      : {final_report.sharpness:.1f} var")
             print(f"[*] Final Contrast       : {final_report.contrast:.1f} std")
         print("=" * 74)
+
+        # Automatically display in Google Colab / Jupyter Notebook
+        try:
+            from IPython.display import display
+            display(trace.final_image)
+        except Exception:
+            pass
+
+        # Open in local image viewer if --show is passed
+        if args.show:
+            try:
+                trace.final_image.show()
+            except Exception:
+                pass
     else:
         print("[!] No image produced by agentic pipeline.")
 
