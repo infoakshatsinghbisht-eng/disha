@@ -192,7 +192,7 @@ def run_graduation_exam(checkpoint_path: str = "checkpoints/multimodal_llm.pt", 
 
     if resolved:
         print(f"[+] Restoring weights from: {resolved}")
-        state = torch.load(resolved, map_location=device)
+        state = torch.load(resolved, map_location=device, weights_only=False)
         if "model_state_dict" in state:
             llm.load_state_dict(state["model_state_dict"], strict=False)
         elif "llm_state_dict" in state:
