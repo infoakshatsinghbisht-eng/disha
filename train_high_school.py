@@ -252,9 +252,8 @@ def train_high_school(
             s_pos = s["img_pos"]
 
             logits_s, _ = llm(inp_s)
-            raw_loss_s = criterion_elem(logits_s.view(-1, logits_s.size(-1)), tgt_s.view(-1))
-
-            loss_s = raw_loss_s.sum() / ((tgt_s.view(-1) != -100).sum() * num_samples)
+            w = 4.0 if s["is_primary"] else 1.0
+            loss_s = (raw_loss_s * w).sum() / ((tgt_s.view(-1) != -100).sum() * num_samples)
             loss_s.backward()
             total_loss += loss_s.item() * num_samples
 

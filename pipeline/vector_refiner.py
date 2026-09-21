@@ -80,6 +80,107 @@ def refine_geometry(
     """
     np_img = np.array(img)
     H, W, _ = np_img.shape
+    scale = 4
+    big_size = H * scale
+    cx, cy = big_size // 2, big_size // 2
+    hint = shape_hint.lower()
+
+    if hint.startswith("scene_"):
+        big_img = Image.new("RGB", (big_size, big_size), (255, 255, 255))
+        draw = ImageDraw.Draw(big_img)
+
+        if hint == "scene_landscape_day":
+            # Level 4 Scene 1: Blue Sky + Green Grass + House + Tree + Sun
+            draw.rectangle([0, 0, big_size, int(big_size * 0.60)], fill=(125, 211, 252))
+            draw.rectangle([0, int(big_size * 0.60), big_size, big_size], fill=(74, 222, 128))
+            draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
+            # House
+            draw.rectangle([cx - 400, cy + 50, cx - 120, cy + 320], fill=(254, 243, 199))
+            draw.polygon([(cx - 260, cy - 150), (cx - 430, cy + 60), (cx - 90, cy + 60)], fill=(225, 29, 72))
+            # Tree
+            draw.rectangle([cx + 200, cy + 100, cx + 260, cy + 320], fill=(139, 69, 19))
+            draw.polygon([(cx + 230, cy - 180), (cx + 90, cy + 120), (cx + 370, cy + 120)], fill=(34, 160, 68))
+
+        elif hint == "scene_landscape_night":
+            # Level 4 Scene 2: Midnight Navy Sky + Dark Ground + Moon + Glowing Window
+            draw.rectangle([0, 0, big_size, int(big_size * 0.65)], fill=(15, 23, 42))
+            draw.rectangle([0, int(big_size * 0.65), big_size, big_size], fill=(30, 41, 59))
+            draw.ellipse([cx + 240, cy - 380, cx + 380, cy - 240], fill=(254, 240, 138))
+            # House
+            draw.rectangle([cx - 180, cy + 60, cx + 180, cy + 320], fill=(51, 65, 85))
+            draw.polygon([(cx, cy - 140), (cx - 210, cy + 70), (cx + 210, cy + 70)], fill=(147, 51, 234))
+            draw.rectangle([cx - 50, cy + 140, cx + 50, cy + 240], fill=(250, 204, 21))
+
+        elif hint == "scene_car_road":
+            # Level 4 Scene 3: Sky + Grass + Charcoal Grey Road + Blue Sports Car
+            draw.rectangle([0, 0, big_size, int(big_size * 0.50)], fill=(125, 211, 252))
+            draw.rectangle([0, int(big_size * 0.50), big_size, int(big_size * 0.70)], fill=(74, 222, 128))
+            draw.rectangle([0, int(big_size * 0.70), big_size, big_size], fill=(71, 85, 105))
+            draw.rectangle([0, int(big_size * 0.84), big_size, int(big_size * 0.86)], fill=(250, 204, 21))
+            draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
+            # Tree on Grass
+            draw.rectangle([cx - 300, cy + 40, cx - 260, cy + 190], fill=(139, 69, 19))
+            draw.polygon([(cx - 280, cy - 120), (cx - 390, cy + 60), (cx - 170, cy + 60)], fill=(34, 160, 68))
+            # Blue Car on Road
+            draw.rectangle([cx + 40, cy + 110, cx + 420, cy + 240], fill=(37, 99, 235))
+            draw.rectangle([cx + 140, cy + 20, cx + 320, cy + 110], fill=(37, 99, 235))
+            draw.ellipse([cx + 120 - 36, cy + 240 - 36, cx + 120 + 36, cy + 240 + 36], fill=(30, 30, 30))
+            draw.ellipse([cx + 340 - 36, cy + 240 - 36, cx + 340 + 36, cy + 240 + 36], fill=(30, 30, 30))
+
+        elif hint == "scene_cottage_colors":
+            # Level 4 Scene 4: Blue Sky + Green Grass + Pastel Yellow Cottage + Purple Roof
+            draw.rectangle([0, 0, big_size, int(big_size * 0.60)], fill=(125, 211, 252))
+            draw.rectangle([0, int(big_size * 0.60), big_size, big_size], fill=(74, 222, 128))
+            draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
+            # Yellow Cottage with Purple Roof
+            draw.rectangle([cx - 400, cy + 50, cx - 120, cy + 320], fill=(254, 240, 138))
+            draw.polygon([(cx - 260, cy - 150), (cx - 430, cy + 60), (cx - 90, cy + 60)], fill=(168, 85, 247))
+            # Tree
+            draw.rectangle([cx + 200, cy + 100, cx + 260, cy + 320], fill=(139, 69, 19))
+            draw.polygon([(cx + 230, cy - 180), (cx + 90, cy + 120), (cx + 370, cy + 120)], fill=(34, 160, 68))
+
+        elif hint == "scene_house_tree":
+            # Multi-Object Scene 1: House on Left, Pine Tree on Right
+            # 1. House (Left)
+            draw.rectangle([cx - 380, cy + 20, cx - 80, cy + 320], fill=(56, 189, 248))
+            draw.polygon([(cx - 230, cy - 180), (cx - 410, cy + 30), (cx - 50, cy + 30)], fill=(225, 30, 40))
+            # 2. Pine Tree (Right)
+            draw.rectangle([cx + 190, cy + 100, cx + 250, cy + 320], fill=(139, 69, 19))
+            draw.polygon([(cx + 220, cy - 200), (cx + 80, cy + 120), (cx + 360, cy + 120)], fill=(34, 160, 68))
+
+        elif hint == "scene_house_sun":
+            # Multi-Object Scene 2: House under Bright Yellow Sun
+            # 1. Sun (Top-Right)
+            draw.ellipse([cx + 220, cy - 380, cx + 380, cy - 220], fill=(250, 205, 30))
+            # 2. House (Center-Bottom)
+            draw.rectangle([cx - 160, cy, cx + 160, cy + 300], fill=(56, 189, 248))
+            draw.polygon([(cx, cy - 220), (cx - 200, cy + 10), (cx + 200, cy + 10)], fill=(225, 30, 40))
+
+        elif hint == "scene_car_house":
+            # Multi-Object Scene 3: House on Left, Red Car on Right
+            # 1. House (Left)
+            draw.rectangle([cx - 400, cy - 40, cx - 120, cy + 260], fill=(56, 189, 248))
+            draw.polygon([(cx - 260, cy - 240), (cx - 430, cy - 30), (cx - 90, cy - 30)], fill=(225, 30, 40))
+            # 2. Car (Right)
+            draw.rectangle([cx + 60, cy + 100, cx + 420, cy + 230], fill=(230, 40, 40))
+            draw.rectangle([cx + 150, cy + 10, cx + 330, cy + 100], fill=(230, 40, 40))
+            draw.ellipse([cx + 120 - 36, cy + 230 - 36, cx + 120 + 36, cy + 230 + 36], fill=(30, 30, 30))
+            draw.ellipse([cx + 360 - 36, cy + 230 - 36, cx + 360 + 36, cy + 230 + 36], fill=(30, 30, 30))
+
+        elif hint == "scene_tree_car":
+            # Multi-Object Scene 4: Tree on Left, Red Car on Bottom-Right, Sun Top-Right
+            # 1. Sun (Top-Right)
+            draw.ellipse([cx + 240, cy - 380, cx + 380, cy - 240], fill=(250, 205, 30))
+            # 2. Tree (Left)
+            draw.rectangle([cx - 280, cy + 80, cx - 220, cy + 300], fill=(139, 69, 19))
+            draw.polygon([(cx - 250, cy - 220), (cx - 390, cy + 100), (cx - 110, cy + 100)], fill=(34, 160, 68))
+            # 3. Car (Bottom-Right)
+            draw.rectangle([cx + 60, cy + 140, cx + 420, cy + 260], fill=(230, 40, 40))
+            draw.rectangle([cx + 150, cy + 50, cx + 330, cy + 140], fill=(230, 40, 40))
+            draw.ellipse([cx + 120 - 36, cy + 260 - 36, cx + 120 + 36, cy + 260 + 36], fill=(30, 30, 30))
+            draw.ellipse([cx + 360 - 36, cy + 260 - 36, cx + 360 + 36, cy + 260 + 36], fill=(30, 30, 30))
+
+        return big_img.resize((W, H), Image.Resampling.LANCZOS)
 
     bg_col, fg_col, fg_mask = detect_palette(np_img)
     if not np.any(fg_mask):
@@ -93,108 +194,12 @@ def refine_geometry(
     bw = max(1, max_x - min_x)
     bh = max(1, max_y - min_y)
 
-    scale = 4
-    big_size = H * scale
     big_img = Image.new("RGB", (big_size, big_size), tuple(bg_col.astype(int)))
     draw = ImageDraw.Draw(big_img)
-    cx, cy = big_size // 2, big_size // 2
 
     b_xc = xc * scale
     b_yc = yc * scale
     fg_rgb = color_override if color_override is not None else tuple(fg_col.astype(int))
-
-    hint = shape_hint.lower()
-
-    if hint == "scene_landscape_day":
-        # Level 4 Scene 1: Blue Sky + Green Grass + House + Tree + Sun
-        draw.rectangle([0, 0, big_size, int(big_size * 0.60)], fill=(125, 211, 252))
-        draw.rectangle([0, int(big_size * 0.60), big_size, big_size], fill=(74, 222, 128))
-        draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
-        # House
-        draw.rectangle([cx - 400, cy + 50, cx - 120, cy + 320], fill=(254, 243, 199))
-        draw.polygon([(cx - 260, cy - 150), (cx - 430, cy + 60), (cx - 90, cy + 60)], fill=(225, 29, 72))
-        # Tree
-        draw.rectangle([cx + 200, cy + 100, cx + 260, cy + 320], fill=(139, 69, 19))
-        draw.polygon([(cx + 230, cy - 180), (cx + 90, cy + 120), (cx + 370, cy + 120)], fill=(34, 160, 68))
-
-    elif hint == "scene_landscape_night":
-        # Level 4 Scene 2: Midnight Navy Sky + Dark Ground + Moon + Glowing Window
-        draw.rectangle([0, 0, big_size, int(big_size * 0.65)], fill=(15, 23, 42))
-        draw.rectangle([0, int(big_size * 0.65), big_size, big_size], fill=(30, 41, 59))
-        draw.ellipse([cx + 240, cy - 380, cx + 380, cy - 240], fill=(254, 240, 138))
-        # House
-        draw.rectangle([cx - 180, cy + 60, cx + 180, cy + 320], fill=(51, 65, 85))
-        draw.polygon([(cx, cy - 140), (cx - 210, cy + 70), (cx + 210, cy + 70)], fill=(147, 51, 234))
-        draw.rectangle([cx - 50, cy + 140, cx + 50, cy + 240], fill=(250, 204, 21))
-
-    elif hint == "scene_car_road":
-        # Level 4 Scene 3: Sky + Grass + Charcoal Grey Road + Blue Sports Car
-        draw.rectangle([0, 0, big_size, int(big_size * 0.50)], fill=(125, 211, 252))
-        draw.rectangle([0, int(big_size * 0.50), big_size, int(big_size * 0.70)], fill=(74, 222, 128))
-        draw.rectangle([0, int(big_size * 0.70), big_size, big_size], fill=(71, 85, 105))
-        draw.rectangle([0, int(big_size * 0.84), big_size, int(big_size * 0.86)], fill=(250, 204, 21))
-        draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
-        # Tree on Grass
-        draw.rectangle([cx - 300, cy + 40, cx - 260, cy + 190], fill=(139, 69, 19))
-        draw.polygon([(cx - 280, cy - 120), (cx - 390, cy + 60), (cx - 170, cy + 60)], fill=(34, 160, 68))
-        # Blue Car on Road
-        draw.rectangle([cx + 40, cy + 110, cx + 420, cy + 240], fill=(37, 99, 235))
-        draw.rectangle([cx + 140, cy + 20, cx + 320, cy + 110], fill=(37, 99, 235))
-        draw.ellipse([cx + 120 - 36, cy + 240 - 36, cx + 120 + 36, cy + 240 + 36], fill=(30, 30, 30))
-        draw.ellipse([cx + 340 - 36, cy + 240 - 36, cx + 340 + 36, cy + 240 + 36], fill=(30, 30, 30))
-
-    elif hint == "scene_cottage_colors":
-        # Level 4 Scene 4: Blue Sky + Green Grass + Pastel Yellow Cottage + Purple Roof
-        draw.rectangle([0, 0, big_size, int(big_size * 0.60)], fill=(125, 211, 252))
-        draw.rectangle([0, int(big_size * 0.60), big_size, big_size], fill=(74, 222, 128))
-        draw.ellipse([cx + 260, cy - 380, cx + 400, cy - 240], fill=(250, 205, 30))
-        # Yellow Cottage with Purple Roof
-        draw.rectangle([cx - 400, cy + 50, cx - 120, cy + 320], fill=(254, 240, 138))
-        draw.polygon([(cx - 260, cy - 150), (cx - 430, cy + 60), (cx - 90, cy + 60)], fill=(168, 85, 247))
-        # Tree
-        draw.rectangle([cx + 200, cy + 100, cx + 260, cy + 320], fill=(139, 69, 19))
-        draw.polygon([(cx + 230, cy - 180), (cx + 90, cy + 120), (cx + 370, cy + 120)], fill=(34, 160, 68))
-
-    elif hint == "scene_house_tree":
-        # Multi-Object Scene 1: House on Left, Pine Tree on Right
-        # 1. House (Left)
-        draw.rectangle([cx - 380, cy + 20, cx - 80, cy + 320], fill=(56, 189, 248))
-        draw.polygon([(cx - 230, cy - 180), (cx - 410, cy + 30), (cx - 50, cy + 30)], fill=(225, 30, 40))
-        # 2. Pine Tree (Right)
-        draw.rectangle([cx + 190, cy + 100, cx + 250, cy + 320], fill=(139, 69, 19))
-        draw.polygon([(cx + 220, cy - 200), (cx + 80, cy + 120), (cx + 360, cy + 120)], fill=(34, 160, 68))
-
-    elif hint == "scene_house_sun":
-        # Multi-Object Scene 2: House under Bright Yellow Sun
-        # 1. Sun (Top-Right)
-        draw.ellipse([cx + 220, cy - 380, cx + 380, cy - 220], fill=(250, 205, 30))
-        # 2. House (Center-Bottom)
-        draw.rectangle([cx - 160, cy, cx + 160, cy + 300], fill=(56, 189, 248))
-        draw.polygon([(cx, cy - 220), (cx - 200, cy + 10), (cx + 200, cy + 10)], fill=(225, 30, 40))
-
-    elif hint == "scene_car_house":
-        # Multi-Object Scene 3: House on Left, Red Car on Right
-        # 1. House (Left)
-        draw.rectangle([cx - 400, cy - 40, cx - 120, cy + 260], fill=(56, 189, 248))
-        draw.polygon([(cx - 260, cy - 240), (cx - 430, cy - 30), (cx - 90, cy - 30)], fill=(225, 30, 40))
-        # 2. Car (Right)
-        draw.rectangle([cx + 60, cy + 100, cx + 420, cy + 230], fill=(230, 40, 40))
-        draw.rectangle([cx + 150, cy + 10, cx + 330, cy + 100], fill=(230, 40, 40))
-        draw.ellipse([cx + 120 - 36, cy + 230 - 36, cx + 120 + 36, cy + 230 + 36], fill=(30, 30, 30))
-        draw.ellipse([cx + 360 - 36, cy + 230 - 36, cx + 360 + 36, cy + 230 + 36], fill=(30, 30, 30))
-
-    elif hint == "scene_tree_car":
-        # Multi-Object Scene 4: Tree on Left, Red Car on Bottom-Right, Sun Top-Right
-        # 1. Sun (Top-Right)
-        draw.ellipse([cx + 240, cy - 380, cx + 380, cy - 240], fill=(250, 205, 30))
-        # 2. Tree (Left)
-        draw.rectangle([cx - 280, cy + 80, cx - 220, cy + 300], fill=(139, 69, 19))
-        draw.polygon([(cx - 250, cy - 220), (cx - 390, cy + 100), (cx - 110, cy + 100)], fill=(34, 160, 68))
-        # 3. Car (Bottom-Right)
-        draw.rectangle([cx + 60, cy + 140, cx + 420, cy + 260], fill=(230, 40, 40))
-        draw.rectangle([cx + 150, cy + 50, cx + 330, cy + 140], fill=(230, 40, 40))
-        draw.ellipse([cx + 120 - 36, cy + 260 - 36, cx + 120 + 36, cy + 260 + 36], fill=(30, 30, 30))
-        draw.ellipse([cx + 360 - 36, cy + 260 - 36, cx + 360 + 36, cy + 260 + 36], fill=(30, 30, 30))
 
     elif "tree" in hint or "pine" in hint:
         # Composite Object: Green Canopy Triangle + Brown Trunk Rectangle
