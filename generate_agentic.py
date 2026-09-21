@@ -56,6 +56,63 @@ def on_thinking_step(step: ThinkingStep):
         print(f"\n[GOAL - STEP {step.step_number}: GOAL ACHIEVED & FINAL APPROVAL]")
         print(f"{step.thought}")
 
+def generate(
+    prompt: str = "a glowing celestial phoenix rising above frozen crystal mountain peaks",
+    checkpoint: str = "checkpoints/multimodal_llm.pt",
+    engine: str = "scratch",
+    style: Optional[str] = None,
+    output: str = "output_agentic.png",
+    device: Optional[str] = None,
+    threshold: float = 7.0,
+    max_refinements: int = 2,
+    auto_refine: bool = True,
+) -> Image.Image:
+    """
+    Programmatic API for Disha Agentic Image Generation.
+    Directly returns the PIL.Image so Google Colab / Jupyter natively renders it in the output cell!
+    """
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    cfg = AgenticConfig(
+        max_refinement_steps=max_refinements,
+        aesthetic_threshold=threshold,
+        default_engine=engine,
+        auto_refine=auto_refine,
+    )
+    print(f"[*] Input Prompt     : \"{prompt}\"")
+    print(f"[*] Selected Engine  : {engine.upper()}")
+    print(f"[*] Device           : {device}")
+    print("-" * 74)
+
+    pipeline = AgenticImagePipeline.from_scratch_checkpoint(
+        checkpoint_path=checkpoint,
+        device=device,
+        config=cfg,
+    )
+    trace = pipeline.run(
+        prompt=prompt,
+        engine=engine,
+        style=style,
+        auto_refine=auto_refine,
+        on_step_callback=on_thinking_step,
+    )
+
+    if trace.final_image is not None:
+        os.makedirs(os.path.dirname(os.path.abspath(output)) if os.path.dirname(output) else ".", exist_ok=True)
+        trace.final_image.save(output)
+        print("\n" + "=" * 74)
+        print(f"[*] Generation Complete in {trace.execution_time_sec}s!")
+        print(f"[*] Final Image Saved to : {os.path.abspath(output)}")
+        if trace.critic_reports:
+            final_report = trace.critic_reports[-1]
+            print(f"[*] Final Aesthetic Score: {final_report.aesthetic_score}/10.0 ({final_report.status})")
+            print(f"[*] Final Sharpness      : {final_report.sharpness:.1f} var")
+            print(f"[*] Final Contrast       : {final_report.contrast:.1f} std")
+        print("=" * 74)
+        return trace.final_image
+    return Image.new("RGB", (256, 256), color=(255, 255, 255))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Disha Agentic Image Generation")
