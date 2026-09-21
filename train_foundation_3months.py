@@ -1,12 +1,12 @@
 """
 Production-Grade 3-Month Foundation Model Training Orchestrator.
-Supports 3-stage curriculum training, TAR-sharded streaming (WebDataset standard),
+Supports Child-to-Genius Graphic Designer Curriculum, TAR-sharded streaming (WebDataset standard),
 fault-tolerant spot-instance auto-recovery, and mixed-precision acceleration.
 
-Curriculum:
-    Stage 1: High-Capacity Visual Tokenizer (VQ-VAE with Sobel edge loss)
-    Stage 2: 2.0B Multimodal Transformer Core Pre-Training (Autoregressive Causal Next-Token)
-    Stage 3: High-Aesthetic & Agentic CoT Post-Training (<think> + <tool_call> SFT)
+Child-to-Genius Graphic Designer Curriculum:
+    Stage 1: Visual Alphabet & Primitives (VQ-VAE Codebook on geometry, shapes, colors & Sobel edge loss)
+    Stage 2: Foundation Transformer Grounding (Flashcard iconography 'A for Apple', Swiss layouts & materials)
+    Stage 3: Creative Director & Genius Level Post-Training (<think> design reasoning & master compositions)
 """
 
 from typing import Optional, Dict, Any, List, Tuple

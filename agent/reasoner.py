@@ -41,19 +41,39 @@ class AgentReasoner:
         
         # Detect primary genre / theme
         genre = "Photorealistic Fine-Art"
-        if any(w in prompt_lower for w in ["cyberpunk", "sci-fi", "robot", "neon", "future"]):
+        design_rule = "Visual balance with organic rule-of-thirds flow"
+        if any(w in prompt_lower for w in ["logo", "icon", "vector", "apple", "badge", "emblem", "minimalist", "flat"]):
+            genre = "Graphic Design / Minimalist Iconography"
+            design_rule = "Single canonical subject grounding, high negative space, crisp vector borders"
+        elif any(w in prompt_lower for w in ["glassmorphism", "ui", "hud", "telemetry", "interface", "card"]):
+            genre = "Modern UI / Glassmorphism & Cyber HUD"
+            design_rule = "Frosted glass translucency, specular rim highlights, and radial telemetry rings"
+        elif any(w in prompt_lower for w in ["bauhaus", "poster", "swiss", "typography", "geometric"]):
+            genre = "Swiss Bauhaus / Constructivist Graphic Poster"
+            design_rule = "Modular 8pt grid alignment, asymmetric primary color blocks, high contrast"
+        elif any(w in prompt_lower for w in ["luxury", "gold foil", "monogram", "crest", "royal"]):
+            genre = "Haute Luxury Brand Monogram & Crest"
+            design_rule = "Heraldic radial symmetry, multi-level metallic gold gradients on matte dark navy"
+        elif any(w in prompt_lower for w in ["cyberpunk", "sci-fi", "robot", "neon", "future"]):
             genre = "Cyberpunk / Sci-Fi"
+            design_rule = "Bioluminescent neon glow with wet reflections and high contrast"
         elif any(w in prompt_lower for w in ["anime", "ghibli", "manga", "cartoon"]):
             genre = "Anime / Studio Ghibli"
+            design_rule = "Soft watercolor cel-shading with nostalgic daylight clarity"
         elif any(w in prompt_lower for w in ["dark", "fantasy", "dragon", "magic", "dungeon"]):
             genre = "Dark Fantasy"
+            design_rule = "Moody chiaroscuro rim lighting with volumetric haze"
         elif any(w in prompt_lower for w in ["3d", "render", "octane", "sculpture"]):
             genre = "3D Octane Render"
+            design_rule = "Raytraced reflections, soft ambient occlusion, studio rim lights"
 
         # Determine lighting & composition recommendations
         composition = "Rule-of-thirds balanced framing with volumetric depth"
         lighting = "Natural directional lighting with soft ambient occlusion"
-        if "cyberpunk" in genre.lower():
+        if "graphic design" in genre.lower():
+            composition = "Harmonic centered grounding with generous negative space"
+            lighting = "Clean studio lighting with zero background noise"
+        elif "cyberpunk" in genre.lower():
             lighting = "Bioluminescent neon glow with wet reflections and high contrast"
         elif "dark" in genre.lower():
             lighting = "Moody chiaroscuro rim lighting with volumetric haze"
@@ -61,10 +81,11 @@ class AgentReasoner:
         thought = (
             f"User Prompt: '{prompt}'\n"
             f"1. Semantic Classification: Detected genre '{genre}'.\n"
-            f"2. Framing & Composition: {composition}.\n"
-            f"3. Lighting Scheme: {lighting}.\n"
-            f"4. Selected Engine: '{engine}' based on resolution & execution target.\n"
-            f"5. Action Plan: Synthesize enriched generation prompt and dispatch initial synthesis tool."
+            f"2. Graphic Design Principle: {design_rule}.\n"
+            f"3. Framing & Composition: {composition}.\n"
+            f"4. Lighting Scheme: {lighting}.\n"
+            f"5. Selected Engine: '{engine}' based on resolution & execution target.\n"
+            f"6. Action Plan: Synthesize enriched generation prompt and dispatch initial synthesis tool."
         )
         return thought
 

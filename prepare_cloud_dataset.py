@@ -27,6 +27,7 @@ if sys.platform == "win32":
 
 from build_dataset import MultimodalDatasetBuilder
 from pipeline.prompt_enhancer import PromptEnhancer
+from pipeline.designer_curriculum import GraphicDesignerCurriculum
 
 ssl_context = ssl._create_unverified_context()
 
@@ -234,13 +235,36 @@ def build_cloud_dataset(
             except Exception:
                 pass
 
-    print(f"[+] Downloaded {fetched_count} new web images.")
+    # Inject Child-to-Genius Graphic Designer Curriculum (Levels 1 to 4)
+    print("\n" + "=" * 70)
+    print("[*] GENERATING CHILD-TO-GENIUS GRAPHIC DESIGNER CURRICULUM")
+    print("    - Level 1: Visual Alphabet & Primitives (Dots, Geometry, Color Contrasts)")
+    print("    - Level 2: Design Flashcards ('A for Apple', Modern Icons & Badges)")
+    print("    - Level 3: Layout & Materials (Glassmorphism, Swiss Grid, Neumorphism)")
+    print("    - Level 4: Creative Director Masterpieces (Cyberpunk HUDs, Gold Foil, 3D)")
+    print("=" * 70)
 
-    # Complement with procedural anti-aliased samples to reach target
-    needed_train = target_train_count - int(len(existing_samples) * 0.9)
+    curriculum_distribution = [
+        (1, 100, "Designer_L1_Primitives"),
+        (2, 150, "Designer_L2_Flashcards"),
+        (3, 150, "Designer_L3_Layouts"),
+        (4, 150, "Designer_L4_Genius"),
+    ]
+
+    for lvl, count, cat_name in curriculum_distribution:
+        print(f"[*] Synthesizing Level {lvl} ({cat_name}): {count} pairs with 4x supersampling...")
+        for _ in range(count):
+            img, desc, cot = GraphicDesignerCurriculum.generate_curriculum_sample(lvl)
+            # We train with CoT (<think>) caption to ground reasoning tokens
+            existing_samples.append((img, cot, cat_name))
+
+    print(f"[+] Total samples accumulated with Graphic Designer Curriculum: {len(existing_samples)}")
+
+    # Complement with procedural anti-aliased samples if still needed
+    needed_train = (target_train_count + target_val_count) - len(existing_samples)
     if needed_train > 0:
-        print(f"[*] Synthesizing {needed_train} procedural high-fidelity scenes with Lanczos supersampling...")
-        for _ in range(needed_train + target_val_count):
+        print(f"[*] Synthesizing {needed_train} additional procedural scenes...")
+        for _ in range(needed_train):
             img, prompt = MultimodalDatasetBuilder.generate_sample(image_size)
             existing_samples.append((img, prompt, "ProceduralFineArt"))
 
