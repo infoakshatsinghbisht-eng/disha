@@ -142,7 +142,8 @@ def refine_geometry(
 
 def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     """
-    Infers the shape type and color from text prompt and executes crisp vector refinement.
+    Infers the shape type and foreground color from text prompt and executes crisp vector refinement.
+    Separates foreground shape from background descriptor to avoid accidental color override.
     """
     p = prompt.lower()
     if "circle" in p:
@@ -158,9 +159,11 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     else:
         hint = "auto"
 
+    # Isolate foreground shape clause (e.g. "a solid purple triangle" from "on white background")
+    shape_desc = p.split(" on ")[0] if " on " in p else p
     color_override = None
     for c_name, c_val in COLOR_PALETTES.items():
-        if f" {c_name} " in f" {p} " or p.startswith(f"{c_name} ") or p.endswith(f" {c_name}"):
+        if f" {c_name} " in f" {shape_desc} " or shape_desc.startswith(f"{c_name} ") or shape_desc.endswith(f" {c_name}"):
             color_override = c_val
             break
 
