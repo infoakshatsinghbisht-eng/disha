@@ -65,14 +65,14 @@ def render_canonical_primitive(lesson_key: str, color_name: str = "default", siz
     if lesson_key == "1_dot":
         col = COLORS.get(color_name, COLORS["red"])
         actual_name = color_name if color_name in COLORS else "red"
-        r = 24
+        r = 36
         draw.ellipse([center - r, center - r, center + r, center + r], fill=col)
         prompt = f"a solid {actual_name} dot centered on white canvas"
 
     elif lesson_key == "2_line":
         col = COLORS.get(color_name, COLORS["blue"])
         actual_name = color_name if color_name in COLORS else "blue"
-        draw.line([(35, center), (size - 35, center)], fill=col, width=12)
+        draw.line([(35, center), (size - 35, center)], fill=col, width=16)
         prompt = f"a clean {actual_name} horizontal line on white background"
 
     elif lesson_key == "3_circle":
@@ -130,6 +130,7 @@ def create_exam_card(
     lesson_key: str,
     prompt: str,
     match_pct: float,
+    fg_pct: float,
     step: int,
 ) -> Image.Image:
     """
@@ -145,13 +146,13 @@ def create_exam_card(
     card = Image.new("RGB", (card_w, card_h), (242, 245, 248))
     draw = ImageDraw.Draw(card)
 
-    is_mastered = match_pct >= 98.0
-    status_text = "MASTERED 🎯" if is_mastered else f"REINFORCING ({match_pct:.1f}%)"
+    is_mastered = (fg_pct >= 95.0 and match_pct >= 98.0)
+    status_text = "MASTERED 🎯" if is_mastered else f"REINFORCING (FG: {fg_pct:.0f}%)"
     status_color = (20, 140, 50) if is_mastered else (200, 90, 20)
 
     draw.text((pad, 10), f"DISHA NURSERY CURRICULUM: LESSON '{lesson_key.upper()}'", fill=(20, 30, 50))
     draw.text((pad, 26), f"Prompt: \"{prompt}\"", fill=(80, 90, 100))
-    draw.text((pad, 42), f"Token Match: {match_pct:.1f}% (Step {step}) | Status: {status_text}", fill=status_color)
+    draw.text((pad, 42), f"FG Shape: {fg_pct:.1f}% | Total Match: {match_pct:.1f}% (Step {step}) | Status: {status_text}", fill=status_color)
 
     # Border & Badges for Target (Left)
     draw.rectangle([pad - 1, header_h + pad - 1, pad + w, header_h + pad + h], outline=(210, 215, 225), width=1)
@@ -267,54 +268,79 @@ def train_reinforcement_mastery(
         slen = s["input"].size(0)
         batch_inp[i, :slen] = s["input"]
         batch_tgt[i, :slen] = s["target"]
+    # 3. Shape-Aware Focal Weighting (5x priority on foreground shape vs white canvas)
+    with torch.no_grad():
+        t_white = transform(Image.new("RGB", (256, 256), (255, 255, 255))).unsqueeze(0).to(device)
+        white_indices = vqvae.encode_to_indices(t_white)[0]
+        bg_token = torch.mode(white_indices).values.item()
+
+    target_fg_mask = (target_gt_tokens != bg_token)
+    total_fg = max(1, target_fg_mask.sum().item())
+
+    loss_weights = torch.ones_like(batch_tgt, dtype=torch.float)
+    for i, s in enumerate(batch_samples):
+        indices = s["gt_tokens"].to(device)
+        is_fg = (indices != bg_token)
+        pos = s["img_pos"]
+        loss_weights[i, pos : pos + 256][is_fg] = 5.0  # 5x boost for the actual shape
+
     batch_inp = batch_inp.to(device)
     batch_tgt = batch_tgt.to(device)
+    loss_weights = loss_weights.to(device)
 
     print(f"[+] Canonical Target Prompt: \"{target_prompt}\"")
-    print(f"[+] Ground Truth Visual Codebook Tokens: 256 tokens ready.")
+    print(f"[+] Ground Truth Visual Codebook Tokens: 256 total ({total_fg} foreground shape tokens)")
 
-    # 3. Iterative Reinforcement Loop
-    print(f"\n[3/4] Reinforcing until target reproduction is achieved ('Jab tak same na banaye tab tak learn')...")
+    # 4. Iterative Reinforcement Loop
+    print(f"\n[3/4] Reinforcing until shape reproduction is achieved ('Jab tak same na banaye tab tak learn')...")
     optimizer = torch.optim.AdamW(llm.parameters(), lr=lr, weight_decay=0.01)
-    criterion = nn.CrossEntropyLoss(ignore_index=-100)
+    criterion_elem = nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
 
     start_time = time.time()
-    best_match = 0.0
+    best_fg_match = 0.0
+    best_total_match = 0.0
     final_step = 0
     pred_tokens_best = None
 
     for step in range(1, max_steps + 1):
         optimizer.zero_grad()
         logits, _ = llm(batch_inp)
-        loss = criterion(logits.view(-1, logits.size(-1)), batch_tgt.view(-1))
+        raw_loss = criterion_elem(logits.view(-1, logits.size(-1)), batch_tgt.view(-1)).view(B, -1)
+        loss = (raw_loss * loss_weights).sum() / loss_weights[batch_tgt != -100].sum()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(llm.parameters(), max_norm=1.0)
         optimizer.step()
 
         final_step = step
 
-        # Evaluate Exact Token Match on Primary Target
+        # Evaluate Exact Token Match on Primary Target (Foreground + Total)
         with torch.no_grad():
             pred_visual = logits[0, target_img_pos : target_img_pos + 256].argmax(dim=-1) - 8000
             matched = (pred_visual == target_gt_tokens).sum().item()
-            match_pct = (matched / 256.0) * 100.0
+            total_pct = (matched / 256.0) * 100.0
 
-        if match_pct > best_match:
-            best_match = match_pct
+            fg_matched = (pred_visual[target_fg_mask] == target_gt_tokens[target_fg_mask]).sum().item()
+            fg_pct = (fg_matched / total_fg) * 100.0
+
+        if fg_pct > best_fg_match or (fg_pct == best_fg_match and total_pct > best_total_match):
+            best_fg_match = fg_pct
+            best_total_match = total_pct
             pred_tokens_best = pred_visual.detach().cpu().tolist()
 
-        status = "🎯 MASTERED!" if match_pct >= target_acc else "REINFORCING..."
-        if step % 2 == 0 or step == 1 or match_pct >= target_acc:
-            print(f"  [Step {step:3d}/{max_steps}] Loss: {loss.item():.4f} | Token Match: {match_pct:5.1f}% ({matched:3d}/256) | {status}")
+        is_mastered = (fg_pct >= 95.0 and total_pct >= target_acc)
+        status = "🎯 MASTERED!" if is_mastered else f"REINFORCING (FG: {fg_pct:.0f}%)..."
+        if step % 2 == 0 or step == 1 or is_mastered:
+            print(f"  [Step {step:3d}/{max_steps}] Loss: {loss.item():.4f} | FG Shape: {fg_pct:5.1f}% ({fg_matched:2d}/{total_fg}) | Total: {total_pct:5.1f}% ({matched:3d}/256) | {status}")
 
-        # Stopping Condition: Exit as soon as target reproduction is mastered
-        if match_pct >= target_acc and loss.item() < 0.25:
+        # Stopping Condition: MUST master the actual foreground shape, not just background!
+        if is_mastered and loss.item() < 0.35:
             elapsed = time.time() - start_time
-            print(f"\n[+] 🎯 TARGET MASTERED IN {step} STEPS! ({elapsed:.1f}s)")
-            print(f"[+] Exact token accuracy: {match_pct:.1f}% ({matched}/256 tokens identical)")
+            print(f"\n[+] 🎯 SHAPE MASTERED IN {step} STEPS! ({elapsed:.1f}s)")
+            print(f"[+] Foreground Shape Accuracy : {fg_pct:.1f}% ({fg_matched}/{total_fg} tokens)")
+            print(f"[+] Overall Canvas Accuracy   : {total_pct:.1f}% ({matched}/256 tokens)")
             break
 
-    # 4. Save Graduated Checkpoint
+    # 5. Save Graduated Checkpoint
     print(f"\n[+] Saving reinforced model checkpoint to: {checkpoint_path}")
     os.makedirs(os.path.dirname(os.path.abspath(checkpoint_path)), exist_ok=True)
     if os.path.exists(checkpoint_path):
@@ -344,7 +370,8 @@ def train_reinforcement_mastery(
         learned_img=learned_img,
         lesson_key=lesson_key,
         prompt=target_prompt,
-        match_pct=best_match,
+        match_pct=best_total_match,
+        fg_pct=best_fg_match,
         step=final_step,
     )
 
@@ -354,7 +381,8 @@ def train_reinforcement_mastery(
 
     print(f"[+] Exam Comparison Card Saved : {os.path.abspath(exam_filename)}")
     print(f"[+] Standalone Output Image Saved: {os.path.abspath(f'output_{lesson_key}.png')}")
-    print(f"[+] Best Match Accuracy Achieved : {best_match:.1f}%")
+    print(f"[+] Best FG Shape Match Achieved : {best_fg_match:.1f}%")
+    print(f"[+] Best Total Match Achieved    : {best_total_match:.1f}%")
 
     # Inline display for Colab / Jupyter
     try:
