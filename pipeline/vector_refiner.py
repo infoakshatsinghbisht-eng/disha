@@ -104,27 +104,7 @@ def refine_geometry(
 
     hint = shape_hint.lower()
 
-    if "circle" in hint or "dot" in hint or ("line" not in hint and "square" not in hint and "triangle" not in hint and abs(bw - bh) < 30):
-        # Circle / Dot
-        radial_d = np.sqrt((x_idx - xc) ** 2 + (y_idx - yc) ** 2)
-        r = float(np.percentile(radial_d, 92)) * scale
-        draw.ellipse([b_xc - r, b_yc - r, b_xc + r, b_yc + r], fill=fg_rgb)
-
-    elif "line" in hint:
-        if bw > bh * 1.5:
-            # Horizontal line
-            w = float(bh) * scale
-            draw.line([(min_x * scale, b_yc), (max_x * scale, b_yc)], fill=fg_rgb, width=max(4, int(w)))
-        else:
-            # Vertical line
-            w = float(bw) * scale
-            draw.line([(b_xc, min_y * scale), (b_xc, max_y * scale)], fill=fg_rgb, width=max(4, int(w)))
-
-    elif "square" in hint:
-        side = ((bw + bh) * scale) / 4
-        draw.rectangle([b_xc - side, b_yc - side, b_xc + side, b_yc + side], fill=fg_rgb)
-
-    elif "tree" in hint or "pine" in hint:
+    if "tree" in hint or "pine" in hint:
         # Composite Object: Green Canopy Triangle + Brown Trunk Rectangle
         # 1. Trunk (bottom 35% of bounding box)
         trunk_top_y = min_y * scale + (bh * scale) * 0.60
@@ -156,26 +136,39 @@ def refine_geometry(
         # Composite Object: Yellow Circle + Black Eyes + Black Smile
         r = ((bw + bh) * scale) / 4
         draw.ellipse([b_xc - r, b_yc - r, b_xc + r, b_yc + r], fill=(250, 205, 30))
-        eye_r = max(4, int(r * 0.11))
-        draw.ellipse([b_xc - r * 0.35 - eye_r, b_yc - r * 0.28 - eye_r, b_xc - r * 0.35 + eye_r, b_yc - r * 0.28 + eye_r], fill=(20, 20, 20))
-        draw.ellipse([b_xc + r * 0.35 - eye_r, b_yc - r * 0.28 - eye_r, b_xc + r * 0.35 + eye_r, b_yc - r * 0.28 + eye_r], fill=(20, 20, 20))
-        draw.arc([b_xc - r * 0.45, b_yc - r * 0.15, b_xc + r * 0.45, b_yc + r * 0.50], start=20, end=160, fill=(20, 20, 20), width=max(3, int(r * 0.08)))
+        eye_r = max(8, int(r * 0.17))
+        eye_offset_x = int(r * 0.38)
+        eye_offset_y = int(r * 0.24)
+        draw.ellipse([b_xc - eye_offset_x - eye_r, b_yc - eye_offset_y - eye_r, b_xc - eye_offset_x + eye_r, b_yc - eye_offset_y + eye_r], fill=(20, 20, 20))
+        draw.ellipse([b_xc + eye_offset_x - eye_r, b_yc - eye_offset_y - eye_r, b_xc + eye_offset_x + eye_r, b_yc - eye_offset_y + eye_r], fill=(20, 20, 20))
+        draw.arc([b_xc - r * 0.52, b_yc - r * 0.12, b_xc + r * 0.52, b_yc + r * 0.58], start=25, end=155, fill=(20, 20, 20), width=max(6, int(r * 0.11)))
 
     elif "car" in hint or "vehicle" in hint:
         # Composite Object: Red Toy Car Body + 2 Black Wheels
-        # Body
         body_top_y = min_y * scale + (bh * scale) * 0.40
         body_bot_y = max_y * scale - (bh * scale) * 0.15
         car_col = (230, 40, 40) if color_override is None else color_override
         draw.rectangle([b_xc - (bw * scale) * 0.45, body_top_y, b_xc + (bw * scale) * 0.45, body_bot_y], fill=car_col)
-        # Cabin
         cabin_top_y = min_y * scale
         draw.rectangle([b_xc - (bw * scale) * 0.25, cabin_top_y, b_xc + (bw * scale) * 0.25, body_top_y], fill=car_col)
-        # Wheels
         wheel_r = (bh * scale) * 0.16
         wheel_y = body_bot_y
         draw.ellipse([b_xc - (bw * scale) * 0.28 - wheel_r, wheel_y - wheel_r, b_xc - (bw * scale) * 0.28 + wheel_r, wheel_y + wheel_r], fill=(30, 30, 30))
         draw.ellipse([b_xc + (bw * scale) * 0.28 - wheel_r, wheel_y - wheel_r, b_xc + (bw * scale) * 0.28 + wheel_r, wheel_y + wheel_r], fill=(30, 30, 30))
+
+    elif "line" in hint:
+        if bw > bh * 1.5:
+            # Horizontal line
+            w = float(bh) * scale
+            draw.line([(min_x * scale, b_yc), (max_x * scale, b_yc)], fill=fg_rgb, width=max(4, int(w)))
+        else:
+            # Vertical line
+            w = float(bw) * scale
+            draw.line([(b_xc, min_y * scale), (b_xc, max_y * scale)], fill=fg_rgb, width=max(4, int(w)))
+
+    elif "square" in hint:
+        side = ((bw + bh) * scale) / 4
+        draw.rectangle([b_xc - side, b_yc - side, b_xc + side, b_yc + side], fill=fg_rgb)
 
     elif "triangle" in hint:
         half_w = (bw * scale) / 2
@@ -183,6 +176,11 @@ def refine_geometry(
         bot_y = max_y * scale
         pts = [(b_xc, top_y), (b_xc - half_w, bot_y), (b_xc + half_w, bot_y)]
         draw.polygon(pts, fill=fg_rgb)
+
+    elif "circle" in hint or "dot" in hint:
+        radial_d = np.sqrt((x_idx - xc) ** 2 + (y_idx - yc) ** 2)
+        r = float(np.percentile(radial_d, 92)) * scale
+        draw.ellipse([b_xc - r, b_yc - r, b_xc + r, b_yc + r], fill=fg_rgb)
 
     else:
         # Default smooth ellipse

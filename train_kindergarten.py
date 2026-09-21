@@ -70,16 +70,16 @@ def render_canonical_composite(object_name: str, size: int = 256) -> Tuple[Image
 
     elif "smiley" in obj or "face" in obj:
         # 1. Face (Yellow Circle)
-        r = 280
+        r = 340
         draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(250, 205, 30))
 
-        # 2. Eyes (Two Black Dots)
-        eye_r = 30
-        draw.ellipse([cx - 100 - eye_r, cy - 80 - eye_r, cx - 100 + eye_r, cy - 80 + eye_r], fill=(20, 20, 20))
-        draw.ellipse([cx + 100 - eye_r, cy - 80 - eye_r, cx + 100 + eye_r, cy - 80 + eye_r], fill=(20, 20, 20))
+        # 2. Eyes (Two Bold Black Circles)
+        eye_r = 50
+        draw.ellipse([cx - 120 - eye_r, cy - 70 - eye_r, cx - 120 + eye_r, cy - 70 + eye_r], fill=(20, 20, 20))
+        draw.ellipse([cx + 120 - eye_r, cy - 70 - eye_r, cx + 120 + eye_r, cy - 70 + eye_r], fill=(20, 20, 20))
 
-        # 3. Smile (Curved Arc)
-        draw.arc([cx - 120, cy - 40, cx + 120, cy + 140], start=20, end=160, fill=(20, 20, 20), width=24)
+        # 3. Smile (Bold Curved Arc)
+        draw.arc([cx - 160, cy - 40, cx + 160, cy + 180], start=25, end=155, fill=(20, 20, 20), width=38)
         prompt = "a cartoon yellow smiling face on white background"
 
     elif "car" in obj:
