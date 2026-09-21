@@ -405,13 +405,8 @@ def train_reinforcement_mastery(
     print(f"[+] Raw Neural Image Saved      : {os.path.abspath(f'output_{lesson_key}_neural.png')}")
     print(f"[+] Best FG Shape Match Achieved : {best_fg_match:.1f}%")
     print(f"[+] Best Total Match Achieved    : {best_total_match:.1f}%")
-
-    # Inline display for Colab / Jupyter
-    try:
-        from IPython.display import display
-        display(exam_card)
-    except Exception:
-        pass
+    print(f"\n[💡] Colab Notebook me card dekhne ke liye next cell me run karein:")
+    print(f"     from IPython.display import Image, display; display(Image('{exam_filename}'))\n")
 
     return exam_card
 

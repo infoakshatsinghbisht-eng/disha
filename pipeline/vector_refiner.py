@@ -121,9 +121,8 @@ def refine_geometry(
             draw.line([(b_xc, min_y * scale), (b_xc, max_y * scale)], fill=fg_rgb, width=max(4, int(w)))
 
     elif "square" in hint:
-        half_w = (bw * scale) / 2
-        half_h = (bh * scale) / 2
-        draw.rectangle([b_xc - half_w, b_yc - half_h, b_xc + half_w, b_yc + half_h], fill=fg_rgb)
+        side = ((bw + bh) * scale) / 4
+        draw.rectangle([b_xc - side, b_yc - side, b_xc + side, b_yc + side], fill=fg_rgb)
 
     elif "triangle" in hint:
         half_w = (bw * scale) / 2
