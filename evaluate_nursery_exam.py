@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Tuple
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
+from torchvision import transforms
 from config import LLMConfig, VQVAEConfig
 from tokenizer.text_tokenizer import ByteTokenizer
 from model.transformer import MultimodalTransformer
@@ -20,9 +21,20 @@ from vqvae.model import VQVAE
 from pipeline.vector_refiner import refine_geometry_from_prompt
 from train_nursery_geometry import (
     render_canonical_primitive,
-    encode_image_to_tokens,
     decode_tokens_to_image,
 )
+
+
+def encode_image_to_tokens(vqvae: VQVAE, img: Image.Image, device: str) -> torch.Tensor:
+    t = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])
+    tensor = t(img).unsqueeze(0).to(device)
+    with torch.no_grad():
+        indices = vqvae.encode_to_indices(tensor)[0]
+    return indices
 
 
 EXAM_SYLLABUS = [
