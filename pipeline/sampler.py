@@ -126,6 +126,11 @@ class MultimodalGeneratorPipeline:
         # 1. Text Tokenization
         text_tokens = self.tokenizer.encode(prompt, add_bos=False, add_eos=False)
         
+        # Guard against sequence length overflow: preserve most relevant prompt tokens
+        max_prompt_len = max(1, self.llm.max_seq_len - self.image_token_len - 4)
+        if len(text_tokens) > max_prompt_len:
+            text_tokens = text_tokens[-max_prompt_len:]
+
         # 2. Construct Prefix: [ <bos>, text_tokens, <image_start> ]
         prefix = [self.tokenizer.bos_id] + text_tokens + [self.tokenizer.image_start_id]
         prompt_tensor = torch.tensor([prefix], dtype=torch.long, device=self.device)
@@ -135,12 +140,15 @@ class MultimodalGeneratorPipeline:
         min_img_token = self.text_vocab_size
         max_img_token = self.text_vocab_size + self.vqvae.codebook_size
 
+        rep_pen = getattr(gen_config, "repetition_penalty", 1.08)
         generated_seq = self.llm.generate(
             prompt_tokens=prompt_tensor,
             max_new_tokens=self.image_token_len,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
+            repetition_penalty=rep_pen,
+            consecutive_penalty=2.5,
             allowed_token_range=(min_img_token, max_img_token),
         )
 
@@ -191,18 +199,25 @@ class MultimodalGeneratorPipeline:
             gen_config = GenerationConfig()
 
         text_tokens = self.tokenizer.encode(prompt, add_bos=False, add_eos=False)
+        max_prompt_len = max(1, self.llm.max_seq_len - self.image_token_len - 4)
+        if len(text_tokens) > max_prompt_len:
+            text_tokens = text_tokens[-max_prompt_len:]
+
         prefix = [self.tokenizer.bos_id] + text_tokens + [self.tokenizer.image_start_id]
         prompt_tensor = torch.tensor([prefix], dtype=torch.long, device=self.device)
 
         min_img_token = self.text_vocab_size
         max_img_token = self.text_vocab_size + self.vqvae.codebook_size
 
+        rep_pen = getattr(gen_config, "repetition_penalty", 1.08)
         generated_seq = self.llm.generate(
             prompt_tokens=prompt_tensor,
             max_new_tokens=self.image_token_len,
             temperature=gen_config.temperature,
             top_k=gen_config.top_k,
             top_p=gen_config.top_p,
+            repetition_penalty=rep_pen,
+            consecutive_penalty=2.5,
             allowed_token_range=(min_img_token, max_img_token),
         )
 

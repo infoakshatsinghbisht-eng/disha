@@ -78,5 +78,9 @@ class RotaryEmbedding(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if seq_len is None:
             seq_len = xq.shape[1]
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seq_len].to(xq.device)
+        needed_len = start_pos + seq_len
+        if needed_len > self.freqs_cis.shape[0]:
+            target_len = max(needed_len + 512, self.freqs_cis.shape[0] * 2)
+            self.freqs_cis = precompute_freqs_cis(self.dim, target_len, self.theta).to(xq.device)
+        freqs_cis = self.freqs_cis[start_pos : needed_len].to(xq.device)
         return apply_rotary_emb(xq, xk, freqs_cis)

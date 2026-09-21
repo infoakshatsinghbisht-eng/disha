@@ -51,5 +51,6 @@ data_master/
 checkpoints/
 checkpoints_cloud/
 *.jpg
-output_agentic_test.png
+*.png
+!eval_results/**/*.png
 

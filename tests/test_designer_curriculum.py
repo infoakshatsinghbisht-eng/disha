@@ -25,7 +25,7 @@ class TestGraphicDesignerCurriculum(unittest.TestCase):
         self.assertTrue(cot.startswith("<think>"))
         self.assertIn("</think>", cot)
         self.assertIn("Level 2", cot)
-        self.assertIn("Color Palette", cot)
+        self.assertIn("Aspect:", cot)
 
     def test_level3_layout_materials(self):
         img, desc, cot = GraphicDesignerCurriculum.generate_level3_layout_materials()

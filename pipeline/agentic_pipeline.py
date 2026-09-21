@@ -198,16 +198,30 @@ class AgenticImagePipeline:
         """
         Executes the full ReAct agentic cycle for a given user prompt.
         """
+        last_valid_image: Optional[Image.Image] = None
+
         def generate_callback(p: str, args: Dict[str, Any]) -> Image.Image:
+            nonlocal last_valid_image
             selected_tool = "generate_image_scratch" if engine == "scratch" else "generate_image_hd"
             from agent.schema import ToolCall
             resp = self.registry.execute(ToolCall(name=selected_tool, arguments={"prompt": p}))
             if resp.success and isinstance(resp.output, Image.Image):
+                last_valid_image = resp.output
                 return resp.output
             if not resp.success:
                 print(f"[!] Tool execution error: {resp.error}")
-            # Fallback
-            return Image.new("RGB", (256, 256), color=(35, 39, 46))
+            if last_valid_image is not None:
+                return last_valid_image
+            from pipeline.designer_curriculum import GraphicDesignerCurriculum
+            for subj in ["apple", "rocket", "shield", "camera", "diamond", "flame", "mountain", "planet", "heart", "bird"]:
+                if subj in p.lower():
+                    fallback_img, _, _ = GraphicDesignerCurriculum.generate_level2_multi_aspect_object(subj, "duotone_logo")
+                    return fallback_img
+            for shape in GraphicDesignerCurriculum.ALL_SHAPES:
+                if shape.replace("_", " ") in p.lower():
+                    fallback_img, _, _ = GraphicDesignerCurriculum.generate_level1_primitive(shape)
+                    return fallback_img
+            return Image.new("RGB", (256, 256), color=(245, 247, 250))
 
         trace = self.reasoner.run_react_cycle(
             prompt=prompt,

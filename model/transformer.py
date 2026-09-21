@@ -139,6 +139,7 @@ class MultimodalTransformer(nn.Module):
         self.output.weight = self.tok_embeddings.weight
 
         # Precompute RoPE complex frequencies
+        self.rope_theta = rope_theta
         freqs_cis = precompute_freqs_cis(self.head_dim, max_seq_len, rope_theta)
         self.register_buffer("freqs_cis", freqs_cis, persistent=False)
 
@@ -184,8 +185,15 @@ class MultimodalTransformer(nn.Module):
         B, seq_len = tokens.shape
         h = self.dropout(self.tok_embeddings(tokens))
 
+        # Dynamic RoPE frequency expansion if sequence length exceeds buffer
+        needed_len = start_pos + seq_len
+        if needed_len > self.freqs_cis.shape[0]:
+            target_len = max(needed_len + 512, self.freqs_cis.shape[0] * 2)
+            theta = getattr(self, "rope_theta", 10000.0)
+            self.freqs_cis = precompute_freqs_cis(self.head_dim, target_len, theta).to(tokens.device)
+
         # Retrieve RoPE frequencies for the sequence slice
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seq_len].to(tokens.device)
+        freqs_cis = self.freqs_cis[start_pos : needed_len].to(tokens.device)
 
         # Causal mask only needed when not step-by-step single token decoding
         mask = None
@@ -235,6 +243,8 @@ class MultimodalTransformer(nn.Module):
         temperature: float = 0.85,
         top_k: int = 50,
         top_p: float = 0.92,
+        repetition_penalty: float = 1.0,
+        consecutive_penalty: float = 0.0,
         eos_token_id: Optional[int] = None,
         image_end_token_id: Optional[int] = None,
         allowed_token_range: Optional[Tuple[int, int]] = None,
@@ -248,6 +258,8 @@ class MultimodalTransformer(nn.Module):
             temperature (float): Softmax sampling temperature.
             top_k (int): Top-K truncation parameter.
             top_p (float): Nucleus Top-P cumulative probability threshold.
+            repetition_penalty (float): Repetition penalty factor (>1.0 reduces token repetition).
+            consecutive_penalty (float): Penalty subtracted from logits of recently repeated tokens.
             eos_token_id (int, optional): Stop generation on this token.
             image_end_token_id (int, optional): Stop generation when image completes.
             allowed_token_range (tuple, optional): (min_id, max_id) to strictly constrain sampling.
@@ -271,6 +283,26 @@ class MultimodalTransformer(nn.Module):
                 min_id, max_id = allowed_token_range
                 cur_logits[:, :min_id] = -float("Inf")
                 cur_logits[:, max_id:] = -float("Inf")
+
+            # Apply repetition penalty to prevent token repetition loops
+            if repetition_penalty != 1.0 and generated:
+                prev_tokens = torch.cat(generated, dim=1)  # (B, step)
+                for b in range(B):
+                    unique_toks = torch.unique(prev_tokens[b])
+                    for tok_id in unique_toks:
+                        val = cur_logits[b, tok_id]
+                        if val > 0:
+                            cur_logits[b, tok_id] = val / repetition_penalty
+                        else:
+                            cur_logits[b, tok_id] = val * repetition_penalty
+
+            # Suppress identical consecutive token repeats if consecutive_penalty > 0
+            if consecutive_penalty > 0.0 and len(generated) >= 2:
+                last_tok = generated[-1]
+                second_last_tok = generated[-2]
+                for b in range(B):
+                    if last_tok[b, 0] == second_last_tok[b, 0]:
+                        cur_logits[b, last_tok[b, 0]] -= consecutive_penalty
 
             if temperature > 0:
                 scaled_logits = cur_logits / temperature
