@@ -124,6 +124,21 @@ def refine_geometry(
         side = ((bw + bh) * scale) / 4
         draw.rectangle([b_xc - side, b_yc - side, b_xc + side, b_yc + side], fill=fg_rgb)
 
+    elif "tree" in hint or "pine" in hint:
+        # Composite Object: Green Canopy Triangle + Brown Trunk Rectangle
+        # 1. Trunk (bottom 35% of bounding box)
+        trunk_top_y = min_y * scale + (bh * scale) * 0.60
+        trunk_bot_y = max_y * scale
+        trunk_w = max(16, int((bw * scale) * 0.18))
+        draw.rectangle([b_xc - trunk_w // 2, trunk_top_y, b_xc + trunk_w // 2, trunk_bot_y], fill=(139, 69, 19))
+
+        # 2. Canopy (top 65% of bounding box)
+        canopy_half_w = (bw * scale) * 0.52
+        canopy_top_y = min_y * scale
+        canopy_bot_y = trunk_top_y + 12
+        canopy_col = (34, 160, 68) if color_override is None else color_override
+        draw.polygon([(b_xc, canopy_top_y), (b_xc - canopy_half_w, canopy_bot_y), (b_xc + canopy_half_w, canopy_bot_y)], fill=canopy_col)
+
     elif "triangle" in hint:
         half_w = (bw * scale) / 2
         top_y = min_y * scale
@@ -145,8 +160,9 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     Infers the shape type and foreground color from text prompt and executes crisp vector refinement.
     Separates foreground shape from background descriptor to avoid accidental color override.
     """
-    p = prompt.lower()
-    if "circle" in p:
+    if "tree" in p or "pine" in p:
+        hint = "tree"
+    elif "circle" in p:
         hint = "circle"
     elif "dot" in p:
         hint = "dot"
