@@ -11,8 +11,8 @@ from PIL import Image, ImageDraw
 
 def detect_palette(np_img: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Estimates background color from corners and foreground mask.
-    Snaps near-white corners to pure white, near-black to pure black.
+    Estimates background color from corners and foreground mask using contrast-adaptive thresholding.
+    Suppresses convolution padding borders and snaps clean canvas backgrounds.
     """
     H, W, _ = np_img.shape
     corners = np.concatenate([
@@ -21,21 +21,31 @@ def detect_palette(np_img: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarr
         np_img[-12:, :12].reshape(-1, 3),
         np_img[-12:, -12:].reshape(-1, 3),
     ])
-    bg_col = np.median(corners, axis=0)
-    # Snap clean canvas backgrounds
-    if np.mean(bg_col) > 225:
-        bg_col = np.array([255, 255, 255], dtype=float)
-    elif np.mean(bg_col) < 30:
-        bg_col = np.array([0, 0, 0], dtype=float)
+    bg_actual = np.median(corners, axis=0)
 
-    dist = np.linalg.norm(np_img.astype(float) - bg_col.astype(float), axis=-1)
-    fg_mask = dist > 40.0
+    dist = np.linalg.norm(np_img.astype(float) - bg_actual.astype(float), axis=-1)
+    # Suppress convolution edge padding artifacts
+    dist[:8, :] = 0.0
+    dist[-8:, :] = 0.0
+    dist[:, :8] = 0.0
+    dist[:, -8:] = 0.0
+
+    max_d = float(dist.max())
+    thresh = max(35.0, max_d * 0.42)
+    fg_mask = dist > thresh
+
+    # Canvas color snapping for vector cleanliness
+    if np.mean(bg_actual) > 220:
+        bg_col = np.array([255, 255, 255], dtype=float)
+    elif np.mean(bg_actual) < 35:
+        bg_col = np.array([0, 0, 0], dtype=float)
+    else:
+        bg_col = bg_actual
 
     if not np.any(fg_mask):
-        fg_col = np.array([220, 30, 40], dtype=float)
+        fg_col = np.array([30, 110, 230], dtype=float)
     else:
-        # Sample core foreground pixels with highest distance from background
-        top_dist_thresh = np.percentile(dist[fg_mask], 75)
+        top_dist_thresh = np.percentile(dist[fg_mask], 70)
         core_pixels = np_img[dist >= top_dist_thresh]
         if len(core_pixels) > 0:
             fg_col = np.median(core_pixels, axis=0)
