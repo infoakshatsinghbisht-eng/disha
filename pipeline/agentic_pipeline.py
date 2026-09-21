@@ -118,15 +118,37 @@ class AgenticImagePipeline:
         dim: Optional[int] = None,
         num_layers: Optional[int] = None,
     ) -> "AgenticImagePipeline":
-        """Loads scratch pipeline from checkpoint if available, or lightweight baseline."""
+        """Loads scratch pipeline from checkpoint if available, searching candidate paths."""
         scratch_pipe = None
-        if os.path.exists(checkpoint_path):
-            try:
-                scratch_pipe = MultimodalGeneratorPipeline.from_pretrained(checkpoint_path, device=device)
-            except Exception as e:
-                print(f"[!] Could not load checkpoint ({e}), initializing baseline pipeline.")
         
+        # Search candidate paths for checkpoint (handles nested directory executions like /content/disha/disha)
+        candidate_paths = [
+            checkpoint_path,
+            os.path.join("..", checkpoint_path),
+            os.path.join("../..", checkpoint_path),
+            os.path.join("/content/disha", checkpoint_path),
+            os.path.join("/content/disha/disha", checkpoint_path),
+            os.path.join("/content", checkpoint_path),
+            os.path.join(os.getcwd(), checkpoint_path),
+        ]
+
+        resolved_path = None
+        for cand in candidate_paths:
+            if cand and os.path.exists(cand):
+                resolved_path = cand
+                break
+
+        if resolved_path:
+            try:
+                print(f"[+] Loading trained foundation checkpoint from: {os.path.abspath(resolved_path)}")
+                scratch_pipe = MultimodalGeneratorPipeline.from_pretrained(resolved_path, device=device)
+            except Exception as e:
+                print(f"[!] Error loading checkpoint from {resolved_path} ({e})")
+        else:
+            print(f"[!] WARNING: Checkpoint '{checkpoint_path}' not found in any searched locations: {candidate_paths[:3]}")
+
         if scratch_pipe is None:
+            print("[!] Initializing clean fallback pipeline...")
             llm_cfg = LLMConfig()
             vq_cfg = VQVAEConfig()
             tokenizer = ByteTokenizer()
@@ -182,6 +204,8 @@ class AgenticImagePipeline:
             resp = self.registry.execute(ToolCall(name=selected_tool, arguments={"prompt": p}))
             if resp.success and isinstance(resp.output, Image.Image):
                 return resp.output
+            if not resp.success:
+                print(f"[!] Tool execution error: {resp.error}")
             # Fallback
             return Image.new("RGB", (256, 256), color=(35, 39, 46))
 
