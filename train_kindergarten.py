@@ -82,6 +82,23 @@ def render_canonical_composite(object_name: str, size: int = 256) -> Tuple[Image
         draw.arc([cx - 120, cy - 40, cx + 120, cy + 140], start=20, end=160, fill=(20, 20, 20), width=24)
         prompt = "a cartoon yellow smiling face on white background"
 
+    elif "car" in obj:
+        # 1. Car Body (Red Rectangle + Cabin)
+        body_top = cy - 20
+        body_bot = cy + 140
+        body_half_w = 260
+        draw.rectangle([cx - body_half_w, body_top, cx + body_half_w, body_bot], fill=(230, 40, 40))
+        # Cabin (Top box)
+        cabin_top = cy - 140
+        cabin_half_w = 140
+        draw.rectangle([cx - cabin_half_w, cabin_top, cx + cabin_half_w, body_top], fill=(230, 40, 40))
+        # 2. Wheels (Two Black Circles)
+        wheel_r = 50
+        wheel_y = body_bot
+        draw.ellipse([cx - 150 - wheel_r, wheel_y - wheel_r, cx - 150 + wheel_r, wheel_y + wheel_r], fill=(30, 30, 30))
+        draw.ellipse([cx + 150 - wheel_r, wheel_y - wheel_r, cx + 150 + wheel_r, wheel_y + wheel_r], fill=(30, 30, 30))
+        prompt = "a simple red toy car on white background"
+
     else:
         # Default Tree
         trunk_w = 70
@@ -160,15 +177,18 @@ def train_composite_object(
         "is_primary": True,
     })
 
-    # Add Replay Anchors (Primitives + previously mastered composite objects)
+    # Add Replay Anchors (Primitives + all previously mastered composite objects)
     replay_items = [
         ("primitive", "2_line"),
         ("primitive", "3_circle"),
         ("primitive", "4_square"),
         ("primitive", "5_triangle"),
     ]
-    if object_name != "tree":
-        replay_items.append(("composite", "tree"))
+    learned_order = ["tree", "house", "smiley", "car"]
+    if object_name in learned_order:
+        idx = learned_order.index(object_name)
+        for prev_obj in learned_order[:idx]:
+            replay_items.append(("composite", prev_obj))
 
     for kind, key in replay_items:
         if kind == "primitive":

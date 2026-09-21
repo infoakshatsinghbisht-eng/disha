@@ -161,6 +161,22 @@ def refine_geometry(
         draw.ellipse([b_xc + r * 0.35 - eye_r, b_yc - r * 0.28 - eye_r, b_xc + r * 0.35 + eye_r, b_yc - r * 0.28 + eye_r], fill=(20, 20, 20))
         draw.arc([b_xc - r * 0.45, b_yc - r * 0.15, b_xc + r * 0.45, b_yc + r * 0.50], start=20, end=160, fill=(20, 20, 20), width=max(3, int(r * 0.08)))
 
+    elif "car" in hint or "vehicle" in hint:
+        # Composite Object: Red Toy Car Body + 2 Black Wheels
+        # Body
+        body_top_y = min_y * scale + (bh * scale) * 0.40
+        body_bot_y = max_y * scale - (bh * scale) * 0.15
+        car_col = (230, 40, 40) if color_override is None else color_override
+        draw.rectangle([b_xc - (bw * scale) * 0.45, body_top_y, b_xc + (bw * scale) * 0.45, body_bot_y], fill=car_col)
+        # Cabin
+        cabin_top_y = min_y * scale
+        draw.rectangle([b_xc - (bw * scale) * 0.25, cabin_top_y, b_xc + (bw * scale) * 0.25, body_top_y], fill=car_col)
+        # Wheels
+        wheel_r = (bh * scale) * 0.16
+        wheel_y = body_bot_y
+        draw.ellipse([b_xc - (bw * scale) * 0.28 - wheel_r, wheel_y - wheel_r, b_xc - (bw * scale) * 0.28 + wheel_r, wheel_y + wheel_r], fill=(30, 30, 30))
+        draw.ellipse([b_xc + (bw * scale) * 0.28 - wheel_r, wheel_y - wheel_r, b_xc + (bw * scale) * 0.28 + wheel_r, wheel_y + wheel_r], fill=(30, 30, 30))
+
     elif "triangle" in hint:
         half_w = (bw * scale) / 2
         top_y = min_y * scale
@@ -189,6 +205,8 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
         hint = "house"
     elif "smiley" in p or "face" in p:
         hint = "smiley"
+    elif "car" in p or "toy car" in p:
+        hint = "car"
     elif "circle" in p:
         hint = "circle"
     elif "dot" in p:
