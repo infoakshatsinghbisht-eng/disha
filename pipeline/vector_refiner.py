@@ -160,6 +160,7 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     Infers the shape type and foreground color from text prompt and executes crisp vector refinement.
     Separates foreground shape from background descriptor to avoid accidental color override.
     """
+    p = prompt.lower()
     if "tree" in p or "pine" in p:
         hint = "tree"
     elif "circle" in p:
