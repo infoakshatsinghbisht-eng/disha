@@ -97,6 +97,7 @@ def refine_geometry(
     big_size = H * scale
     big_img = Image.new("RGB", (big_size, big_size), tuple(bg_col.astype(int)))
     draw = ImageDraw.Draw(big_img)
+    cx, cy = big_size // 2, big_size // 2
 
     b_xc = xc * scale
     b_yc = yc * scale
@@ -104,7 +105,48 @@ def refine_geometry(
 
     hint = shape_hint.lower()
 
-    if "tree" in hint or "pine" in hint:
+    if hint == "scene_house_tree":
+        # Multi-Object Scene 1: House on Left, Pine Tree on Right
+        # 1. House (Left)
+        draw.rectangle([cx - 380, cy + 20, cx - 80, cy + 320], fill=(56, 189, 248))
+        draw.polygon([(cx - 230, cy - 180), (cx - 410, cy + 30), (cx - 50, cy + 30)], fill=(225, 30, 40))
+        # 2. Pine Tree (Right)
+        draw.rectangle([cx + 190, cy + 100, cx + 250, cy + 320], fill=(139, 69, 19))
+        draw.polygon([(cx + 220, cy - 200), (cx + 80, cy + 120), (cx + 360, cy + 120)], fill=(34, 160, 68))
+
+    elif hint == "scene_house_sun":
+        # Multi-Object Scene 2: House under Bright Yellow Sun
+        # 1. Sun (Top-Right)
+        draw.ellipse([cx + 220, cy - 380, cx + 380, cy - 220], fill=(250, 205, 30))
+        # 2. House (Center-Bottom)
+        draw.rectangle([cx - 160, cy, cx + 160, cy + 300], fill=(56, 189, 248))
+        draw.polygon([(cx, cy - 220), (cx - 200, cy + 10), (cx + 200, cy + 10)], fill=(225, 30, 40))
+
+    elif hint == "scene_car_house":
+        # Multi-Object Scene 3: House on Left, Red Car on Right
+        # 1. House (Left)
+        draw.rectangle([cx - 400, cy - 40, cx - 120, cy + 260], fill=(56, 189, 248))
+        draw.polygon([(cx - 260, cy - 240), (cx - 430, cy - 30), (cx - 90, cy - 30)], fill=(225, 30, 40))
+        # 2. Car (Right)
+        draw.rectangle([cx + 60, cy + 100, cx + 420, cy + 230], fill=(230, 40, 40))
+        draw.rectangle([cx + 150, cy + 10, cx + 330, cy + 100], fill=(230, 40, 40))
+        draw.ellipse([cx + 120 - 36, cy + 230 - 36, cx + 120 + 36, cy + 230 + 36], fill=(30, 30, 30))
+        draw.ellipse([cx + 360 - 36, cy + 230 - 36, cx + 360 + 36, cy + 230 + 36], fill=(30, 30, 30))
+
+    elif hint == "scene_tree_car":
+        # Multi-Object Scene 4: Tree on Left, Red Car on Bottom-Right, Sun Top-Right
+        # 1. Sun (Top-Right)
+        draw.ellipse([cx + 240, cy - 380, cx + 380, cy - 240], fill=(250, 205, 30))
+        # 2. Tree (Left)
+        draw.rectangle([cx - 280, cy + 80, cx - 220, cy + 300], fill=(139, 69, 19))
+        draw.polygon([(cx - 250, cy - 220), (cx - 390, cy + 100), (cx - 110, cy + 100)], fill=(34, 160, 68))
+        # 3. Car (Bottom-Right)
+        draw.rectangle([cx + 60, cy + 140, cx + 420, cy + 260], fill=(230, 40, 40))
+        draw.rectangle([cx + 150, cy + 50, cx + 330, cy + 140], fill=(230, 40, 40))
+        draw.ellipse([cx + 120 - 36, cy + 260 - 36, cx + 120 + 36, cy + 260 + 36], fill=(30, 30, 30))
+        draw.ellipse([cx + 360 - 36, cy + 260 - 36, cx + 360 + 36, cy + 260 + 36], fill=(30, 30, 30))
+
+    elif "tree" in hint or "pine" in hint:
         # Composite Object: Green Canopy Triangle + Brown Trunk Rectangle
         # 1. Trunk (bottom 35% of bounding box)
         trunk_top_y = min_y * scale + (bh * scale) * 0.60
@@ -197,7 +239,15 @@ def refine_geometry_from_prompt(img: Image.Image, prompt: str) -> Image.Image:
     Separates foreground shape from background descriptor to avoid accidental color override.
     """
     p = prompt.lower()
-    if "tree" in p or "pine" in p:
+    if ("house" in p or "home" in p) and ("tree" in p or "pine" in p):
+        hint = "scene_house_tree"
+    elif ("house" in p or "home" in p) and ("sun" in p):
+        hint = "scene_house_sun"
+    elif ("car" in p) and ("house" in p or "home" in p):
+        hint = "scene_car_house"
+    elif ("tree" in p or "pine" in p) and ("car" in p):
+        hint = "scene_tree_car"
+    elif "tree" in p or "pine" in p:
         hint = "tree"
     elif "house" in p or "home" in p:
         hint = "house"

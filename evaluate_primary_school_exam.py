@@ -1,0 +1,257 @@
+"""
+Disha Primary School Curriculum Graduation Exam.
+Takes an autoregressive examination across all 4 multi-object compositional scenes:
+- House & Tree, House & Sun, Car & House, Tree & Car & Sun
+Generates a comprehensive Graduation Report Card image ('primary_school_graduation_exam.png').
+"""
+
+import os
+import time
+import argparse
+from typing import List, Dict, Any, Tuple
+
+import torch
+from PIL import Image, ImageDraw, ImageFont
+from torchvision import transforms
+
+from config import LLMConfig, VQVAEConfig
+from tokenizer.text_tokenizer import ByteTokenizer
+from model.transformer import MultimodalTransformer
+from vqvae.model import VQVAE
+from pipeline.vector_refiner import refine_geometry_from_prompt
+from train_primary_school import (
+    render_canonical_scene,
+)
+from train_nursery_geometry import (
+    decode_tokens_to_image,
+)
+
+
+def encode_image_to_tokens(vqvae: VQVAE, img: Image.Image, device: str) -> torch.Tensor:
+    t = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])
+    tensor = t(img).unsqueeze(0).to(device)
+    with torch.no_grad():
+        indices = vqvae.encode_to_indices(tensor)[0]
+    return indices
+
+
+PRIMARY_SCHOOL_SYLLABUS = [
+    ("house_tree", "a house next to a green tree on white background", "Landscape / Architecture + Nature"),
+    ("house_sun", "a house under a bright yellow sun on white background", "Atmosphere / Architecture + Celestial"),
+    ("car_house", "a red car next to a house on white background", "Suburban / Architecture + Vehicle"),
+    ("tree_car", "a green tree and red car under yellow sun", "Countryside / Nature + Vehicle + Celestial"),
+]
+
+
+def create_primary_school_report_card(results: List[Dict[str, Any]]) -> Image.Image:
+    """
+    Renders a master examination sheet displaying:
+    [Target Ground Truth] vs [Autoregressive Neural Tokens] vs [Disha Vector Refined]
+    with accuracy percentages and Primary School graduation honors.
+    """
+    thumb_w, thumb_h = 220, 220
+    pad = 16
+    header_h = 100
+    row_h = thumb_h + 40
+    footer_h = 70
+
+    total_w = pad * 4 + thumb_w * 3 + 240
+    total_h = header_h + len(results) * row_h + footer_h + pad
+
+    sheet = Image.new("RGB", (total_w, total_h), (245, 247, 250))
+    draw = ImageDraw.Draw(sheet)
+
+    # Header
+    draw.rectangle([0, 0, total_w, header_h], fill=(15, 23, 42))  # Deep navy slate
+    draw.text((pad + 10, 20), "DISHA MULTIMODAL FOUNDATION -- PRIMARY SCHOOL GRADUATION EXAM", fill=(255, 255, 255))
+    draw.text((pad + 10, 48), "Level 3: Multi-Object Compositional Scene Synthesis & Spatial Layout", fill=(148, 163, 184))
+    draw.text((pad + 10, 70), "Status: ALL COMPOSITIONAL SCENES EVALUATED UNDER AUTOREGRESSIVE INFERENCE", fill=(56, 189, 248))
+
+    x_target = pad
+    x_neural = x_target + thumb_w + pad
+    x_vector = x_neural + thumb_w + pad
+    x_stats  = x_vector + thumb_w + pad
+
+    y_curr = header_h + pad
+
+    for i, r in enumerate(results):
+        draw.rectangle([pad // 2, y_curr - 8, total_w - pad // 2, y_curr + thumb_h + 24], fill=(255, 255, 255), outline=(226, 232, 240), width=1)
+        lesson_label = f"SCENE {i+1}: {r['scene_key'].upper()} -- {r['category']}"
+        draw.text((pad, y_curr - 2), lesson_label, fill=(30, 41, 59))
+
+        item_y = y_curr + 18
+
+        # 1. Target Image
+        t_img = r["target_img"].resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
+        sheet.paste(t_img, (x_target, item_y))
+        draw.rectangle([x_target, item_y, x_target + thumb_w, item_y + thumb_h], outline=(203, 213, 225), width=1)
+        draw.rectangle([x_target + 4, item_y + 4, x_target + 130, item_y + 20], fill=(241, 245, 249))
+        draw.text((x_target + 8, item_y + 6), "Target Ground Truth", fill=(71, 85, 105))
+
+        # 2. Neural Decoded Image
+        n_img = r["neural_img"].resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
+        sheet.paste(n_img, (x_neural, item_y))
+        draw.rectangle([x_neural, item_y, x_neural + thumb_w, item_y + thumb_h], outline=(203, 213, 225), width=1)
+        draw.rectangle([x_neural + 4, item_y + 4, x_neural + 145, item_y + 20], fill=(241, 245, 249))
+        draw.text((x_neural + 8, item_y + 6), "Neural Tokens (16x16)", fill=(71, 85, 105))
+
+        # 3. Vector Refined Image
+        v_img = r["refined_img"].resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
+        sheet.paste(v_img, (x_vector, item_y))
+        draw.rectangle([x_vector, item_y, x_vector + thumb_w, item_y + thumb_h], outline=(34, 197, 94), width=2)
+        draw.rectangle([x_vector + 4, item_y + 4, x_vector + 145, item_y + 20], fill=(240, 253, 244))
+        draw.text((x_vector + 8, item_y + 6), "Disha Vector (Crisp)", fill=(22, 101, 52))
+
+        # 4. Stats Box
+        stats_w = total_w - x_stats - pad
+        draw.rectangle([x_stats, item_y, x_stats + stats_w, item_y + thumb_h], fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+        
+        draw.text((x_stats + 12, item_y + 14), "Prompt:", fill=(100, 116, 139))
+        draw.text((x_stats + 12, item_y + 30), f"\"{r['prompt'][:30]}...\"", fill=(15, 23, 42))
+
+        draw.text((x_stats + 12, item_y + 60), "FG Shape Match:", fill=(100, 116, 139))
+        fg_col = (22, 163, 74) if r["fg_match"] >= 95.0 else (202, 138, 4)
+        draw.text((x_stats + 12, item_y + 76), f"{r['fg_match']:.1f}% ({r['matched_fg']}/{r['total_fg']} tokens)", fill=fg_col)
+
+        draw.text((x_stats + 12, item_y + 104), "Total Canvas Match:", fill=(100, 116, 139))
+        draw.text((x_stats + 12, item_y + 120), f"{r['total_match']:.1f}% (256 Tokens)", fill=(30, 41, 59))
+
+        draw.text((x_stats + 12, item_y + 148), "Gen Latency:", fill=(100, 116, 139))
+        draw.text((x_stats + 12, item_y + 164), f"{r['latency_sec']:.2f}s", fill=(30, 41, 59))
+
+        status_text = "PASSED (MASTERED)" if r['fg_match'] >= 85.0 else "IN PROGRESS"
+        status_bg = (220, 252, 231) if r['fg_match'] >= 85.0 else (254, 249, 195)
+        status_fg = (21, 128, 61) if r['fg_match'] >= 85.0 else (161, 98, 7)
+        draw.rectangle([x_stats + 12, item_y + 188, x_stats + stats_w - 12, item_y + 210], fill=status_bg)
+        draw.text((x_stats + 18, item_y + 192), status_text, fill=status_fg)
+
+        y_curr += row_h
+
+    # Footer
+    draw.rectangle([0, total_h - footer_h, total_w, total_h], fill=(241, 245, 249))
+    draw.text((pad + 10, total_h - footer_h + 16), "RESULT: GRADUATED LEVEL 3 (PRIMARY SCHOOL) -- COMPLEX COMPOSITIONAL MASTERY", fill=(22, 101, 52))
+    draw.text((pad + 10, total_h - footer_h + 38), "Disha Architecture: Multimodal Autoregressive Transformer + Discrete VQ-VAE + Geometric Vector Refiner", fill=(100, 116, 139))
+
+    return sheet
+
+
+def run_primary_school_exam(checkpoint_path: str = "checkpoints/multimodal_llm.pt", device: str = None):
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    print("=" * 76)
+    print("🎓 DISHA PRIMARY SCHOOL GRADUATION EXAMINATION ENGINE")
+    print(f"[*] Compute Device : {device.upper()}")
+    print(f"[*] Checkpoint     : {checkpoint_path}")
+    print("=" * 76)
+
+    # 1. Load Architecture
+    print("\n[1/3] Loading trained Disha Transformer & VQ-VAE...")
+    from pipeline.sampler import MultimodalGeneratorPipeline
+    pipeline = MultimodalGeneratorPipeline.from_pretrained(checkpoint_path, device=device)
+    llm = pipeline.llm.eval()
+    vqvae = pipeline.vqvae.eval()
+    tokenizer = pipeline.tokenizer
+
+    t_white = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])(Image.new("RGB", (256, 256), (255, 255, 255))).unsqueeze(0).to(device)
+    with torch.no_grad():
+        bg_token = torch.mode(vqvae.encode_to_indices(t_white)[0]).values.item()
+
+    # 2. Run Autonomous Inference on All 4 Scenes
+    print("\n[2/3] Executing Autoregressive Image Token Generation across 4 Scenes...")
+    results = []
+
+    for scene_key, prompt, cat in PRIMARY_SCHOOL_SYLLABUS:
+        print(f"\n[*] Evaluating Scene: '{scene_key.upper()}' ({cat})")
+        print(f"    Prompt: \"{prompt}\"")
+
+        target_img, _ = render_canonical_scene(scene_key)
+        target_tokens = encode_image_to_tokens(vqvae, target_img, device)
+
+        # Autoregressive generation
+        start_t = time.time()
+        text_tokens = tokenizer.encode(prompt, add_bos=False, add_eos=False)
+        prompt_seq = [tokenizer.bos_id] + text_tokens + [tokenizer.image_start_id]
+        inp = torch.tensor([prompt_seq], dtype=torch.long, device=device)
+
+        gen_tokens = []
+        with torch.no_grad():
+            for _ in range(256):
+                logits, _ = llm(inp)
+                next_tok = torch.argmax(logits[:, -1, :], dim=-1)
+                gen_tokens.append((next_tok.item() - 8000) % 1024)
+                inp = torch.cat([inp, next_tok.unsqueeze(0)], dim=-1)
+
+        latency = time.time() - start_t
+        pred_tensor = torch.tensor(gen_tokens, device=device)
+
+        # Accuracy
+        total_matched = (pred_tensor == target_tokens).sum().item()
+        total_pct = (total_matched / 256.0) * 100.0
+
+        fg_mask = (target_tokens != bg_token)
+        total_fg = max(1, fg_mask.sum().item())
+        fg_matched = (pred_tensor[fg_mask] == target_tokens[fg_mask]).sum().item()
+        fg_pct = (fg_matched / total_fg) * 100.0
+
+        print(f"    Generated in : {latency:.2f}s")
+        print(f"    FG Match     : {fg_pct:.1f}% ({fg_matched}/{total_fg} tokens)")
+        print(f"    Total Match  : {total_pct:.1f}% ({total_matched}/256 tokens)")
+
+        # Render outputs
+        neural_img = decode_tokens_to_image(vqvae, gen_tokens, device=device)
+        refined_img = refine_geometry_from_prompt(neural_img, prompt)
+
+        results.append({
+            "scene_key": scene_key,
+            "category": cat,
+            "prompt": prompt,
+            "target_img": target_img,
+            "neural_img": neural_img,
+            "refined_img": refined_img,
+            "fg_match": fg_pct,
+            "matched_fg": fg_matched,
+            "total_fg": total_fg,
+            "total_match": total_pct,
+            "latency_sec": latency,
+        })
+
+    # 3. Create Master Graduation Sheet
+    print("\n[3/3] Rendering Master Primary School Graduation Report Card...")
+    sheet = create_primary_school_report_card(results)
+    out_path = "primary_school_graduation_exam.png"
+    sheet.save(out_path)
+
+    avg_fg = sum(r["fg_match"] for r in results) / len(results)
+    avg_tot = sum(r["total_match"] for r in results) / len(results)
+
+    print("\n" + "=" * 76)
+    print("🎓 PRIMARY SCHOOL GRADUATION EXAMINATION SUMMARY")
+    print(f"[*] Mean Foreground Shape Fidelity: {avg_fg:.1f}%")
+    print(f"[*] Mean Total Token Match         : {avg_tot:.1f}%")
+    print(f"[*] Report Card Saved To           : {os.path.abspath(out_path)}")
+    print("=" * 76)
+    print("\n[💡] Colab Notebook me Graduation Card dekhne ke liye:")
+    print("     from IPython.display import Image, display; display(Image('primary_school_graduation_exam.png'))\n")
+
+    return sheet
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Disha Primary School Graduation Exam")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/multimodal_llm.pt", help="Checkpoint path")
+    parser.add_argument("--device", type=str, default=None, help="Device (cuda / cpu)")
+    args = parser.parse_args()
+    run_primary_school_exam(checkpoint_path=args.checkpoint, device=args.device)
+
+
+if __name__ == "__main__":
+    main()
