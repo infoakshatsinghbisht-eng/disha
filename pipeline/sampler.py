@@ -87,14 +87,40 @@ class MultimodalGeneratorPipeline:
 
         total_vocab_size = getattr(llm_cfg, "text_vocab_size", 8000) + getattr(llm_cfg, "image_vocab_size", 2048) + len(tokenizer.SPECIAL_TOKENS)
 
+        # Auto-detect exact model dimensions from checkpoint weights
+        model_dim = 512
+        model_layers = 8
+        model_heads = 8
+        model_kv_heads = 4
+        ffn_mult = 3.5
+
+        if "llm_state_dict" in ckpt:
+            sd = ckpt["llm_state_dict"]
+            if "tok_embeddings.weight" in sd:
+                model_dim = sd["tok_embeddings.weight"].shape[1]
+            layer_indices = [int(k.split(".")[1]) for k in sd.keys() if k.startswith("layers.") and len(k.split(".")) > 1 and k.split(".")[1].isdigit()]
+            if layer_indices:
+                model_layers = max(layer_indices) + 1
+            model_heads = 8 if model_dim == 512 else max(4, model_dim // 64)
+            model_kv_heads = max(2, model_heads // 2)
+            if "layers.0.feed_forward.w1.weight" in sd:
+                inter_dim = sd["layers.0.feed_forward.w1.weight"].shape[0]
+                ffn_mult = round(inter_dim / model_dim, 2)
+        elif hasattr(llm_cfg, "dim"):
+            model_dim = llm_cfg.dim
+            model_layers = llm_cfg.num_layers
+            model_heads = llm_cfg.num_heads
+            model_kv_heads = getattr(llm_cfg, "num_kv_heads", 4)
+            ffn_mult = getattr(llm_cfg, "ffn_dim_multiplier", 3.5)
+
         llm = MultimodalTransformer(
             vocab_size=total_vocab_size,
-            dim=getattr(llm_cfg, "dim", 512),
-            num_layers=getattr(llm_cfg, "num_layers", 8),
-            num_heads=getattr(llm_cfg, "num_heads", 8),
-            num_kv_heads=getattr(llm_cfg, "num_kv_heads", 4),
+            dim=model_dim,
+            num_layers=model_layers,
+            num_heads=model_heads,
+            num_kv_heads=model_kv_heads,
             max_seq_len=getattr(llm_cfg, "max_seq_len", 512),
-            ffn_dim_multiplier=getattr(llm_cfg, "ffn_dim_multiplier", 3.5),
+            ffn_dim_multiplier=ffn_mult,
             multiple_of=getattr(llm_cfg, "multiple_of", 64),
             norm_eps=getattr(llm_cfg, "norm_eps", 1e-6),
             rope_theta=getattr(llm_cfg, "rope_theta", 10000.0),
