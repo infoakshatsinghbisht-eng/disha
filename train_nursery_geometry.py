@@ -327,9 +327,13 @@ def train_reinforcement_mastery(
             best_total_match = total_pct
             pred_tokens_best = pred_visual.detach().cpu().tolist()
 
-        is_mastered = (fg_pct >= 95.0 and total_pct >= target_acc)
-        status = "🎯 MASTERED!" if is_mastered else f"REINFORCING (FG: {fg_pct:.0f}%)..."
-        if step % 2 == 0 or step == 1 or is_mastered:
+        if target_acc >= 99.9:
+            is_mastered = (matched == 256)
+        else:
+            is_mastered = (total_pct >= target_acc and fg_pct >= 95.0)
+
+        status = "🎯 100% MASTERED!" if matched == 256 else ("🎯 MASTERED!" if is_mastered else f"REINFORCING (FG: {fg_pct:.0f}%)...")
+        if step % 2 == 0 or step == 1 or is_mastered or matched == 256:
             print(f"  [Step {step:3d}/{max_steps}] Loss: {loss.item():.4f} | FG Shape: {fg_pct:5.1f}% ({fg_matched:2d}/{total_fg}) | Total: {total_pct:5.1f}% ({matched:3d}/256) | {status}")
 
         # Stopping Condition: MUST master the actual foreground shape, not just background!
@@ -405,7 +409,7 @@ def main():
         choices=["1_dot", "2_line", "3_circle", "4_square", "5_triangle"],
         help="Nursery syllabus lesson to train",
     )
-    parser.add_argument("--target_acc", type=float, default=98.0, help="Target token match threshold percentage (e.g. 98.0 or 100.0)")
+    parser.add_argument("--target_acc", type=float, default=100.0, help="Target token match threshold percentage (e.g. 98.0 or 100.0)")
     parser.add_argument("--max_steps", type=int, default=100, help="Maximum reinforcement steps")
     parser.add_argument("--lr", type=float, default=2.5e-4, help="Learning rate")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/multimodal_llm.pt", help="Checkpoint path")
