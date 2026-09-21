@@ -198,7 +198,7 @@ ANCHOR_COLORS = {
 
 
 def train_reinforcement_mastery(
-    lesson_key: str = "1_dot",
+    lesson_key: str = "all",
     target_acc: float = 98.0,
     max_steps: int = 100,
     lr: float = 2.5e-4,
@@ -207,8 +207,7 @@ def train_reinforcement_mastery(
 ) -> Image.Image:
     """
     Target-driven Reinforcement Loop:
-    Keeps training with AdamW until the model's visual codebook token predictions
-    match the ground truth target tokens with >= target_acc percentage!
+    Trains on single lesson or ALL lessons jointly with replay anchors to prevent catastrophic forgetting.
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -234,43 +233,62 @@ def train_reinforcement_mastery(
         T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
 
-    # 2. Build Authoritative Target and Contrastive Anchors
-    print(f"\n[2/4] Synthesizing authoritative target & contrastive anchors...")
-    colors = ANCHOR_COLORS.get(lesson_key, ["red", "blue", "green"])
-    target_img, target_prompt = render_canonical_primitive(lesson_key, colors[0])
+    # 2. Build Authoritative Targets and Contrastive Anchors
+    print(f"\n[2/4] Synthesizing authoritative targets & contrastive anchors...")
+    if lesson_key == "all":
+        syllabus_keys = ["2_line", "3_circle", "4_square", "5_triangle"]
+    else:
+        syllabus_keys = [lesson_key]
 
     batch_samples = []
-    for col in colors:
-        img, prompt = render_canonical_primitive(lesson_key, col)
-        t_img = transform(img).unsqueeze(0).to(device)
-        with torch.no_grad():
-            indices = vqvae.encode_to_indices(t_img)[0].cpu()
+    primary_targets = []
 
-        text_tokens = tokenizer.encode(prompt, add_bos=False, add_eos=False)
-        prefix = [tokenizer.bos_id] + text_tokens + [tokenizer.image_start_id]
-        full_seq = prefix + (indices + 8000).tolist() + [tokenizer.image_end_id, tokenizer.eos_id]
+    with torch.no_grad():
+        t_white = transform(Image.new("RGB", (256, 256), (255, 255, 255))).unsqueeze(0).to(device)
+        white_indices = vqvae.encode_to_indices(t_white)[0]
+        bg_token = torch.mode(white_indices).values.item()
 
-        inp = torch.tensor(full_seq[:-1], dtype=torch.long)
-        tgt = torch.tensor(full_seq[1:], dtype=torch.long)
-        img_pos = len(prefix) - 1
-        tgt[:img_pos] = -100
-        tgt[img_pos + 256:] = -100
+    for l_key in syllabus_keys:
+        colors = ANCHOR_COLORS.get(l_key, ["red", "blue", "green"])
+        for col_idx, col in enumerate(colors):
+            img, prompt = render_canonical_primitive(l_key, col)
+            t_img = transform(img).unsqueeze(0).to(device)
+            with torch.no_grad():
+                indices = vqvae.encode_to_indices(t_img)[0].cpu()
 
-        batch_samples.append({
-            "input": inp,
-            "target": tgt,
-            "img_pos": img_pos,
-            "gt_tokens": indices,
-            "prompt": prompt,
-            "is_primary": (col == colors[0]),
-        })
+            text_tokens = tokenizer.encode(prompt, add_bos=False, add_eos=False)
+            prefix = [tokenizer.bos_id] + text_tokens + [tokenizer.image_start_id]
+            full_seq = prefix + (indices + 8000).tolist() + [tokenizer.image_end_id, tokenizer.eos_id]
 
-    # Prepare primary target reference for verification
-    primary = batch_samples[0]
-    target_gt_tokens = primary["gt_tokens"].to(device)
-    primary_inp = primary["input"].unsqueeze(0).to(device)
-    primary_tgt = primary["target"].unsqueeze(0).to(device)
-    target_img_pos = primary["img_pos"]
+            inp = torch.tensor(full_seq[:-1], dtype=torch.long)
+            tgt = torch.tensor(full_seq[1:], dtype=torch.long)
+            img_pos = len(prefix) - 1
+            tgt[:img_pos] = -100
+            tgt[img_pos + 256:] = -100
+
+            is_primary = (col_idx == 0)
+            sample_idx = len(batch_samples)
+
+            batch_samples.append({
+                "input": inp,
+                "target": tgt,
+                "img_pos": img_pos,
+                "gt_tokens": indices,
+                "prompt": prompt,
+                "lesson_key": l_key,
+                "is_primary": is_primary,
+            })
+
+            if is_primary:
+                primary_targets.append({
+                    "batch_idx": sample_idx,
+                    "lesson_key": l_key,
+                    "prompt": prompt,
+                    "img_pos": img_pos,
+                    "gt_tokens": indices.to(device),
+                    "fg_mask": (indices.to(device) != bg_token),
+                    "total_fg": max(1, (indices.to(device) != bg_token).sum().item()),
+                })
 
     # Collate batch
     max_len = max(s["input"].size(0) for s in batch_samples)
@@ -281,39 +299,28 @@ def train_reinforcement_mastery(
         slen = s["input"].size(0)
         batch_inp[i, :slen] = s["input"]
         batch_tgt[i, :slen] = s["target"]
-    # 3. Shape-Aware Focal Weighting (5x priority on foreground shape vs white canvas)
-    with torch.no_grad():
-        t_white = transform(Image.new("RGB", (256, 256), (255, 255, 255))).unsqueeze(0).to(device)
-        white_indices = vqvae.encode_to_indices(t_white)[0]
-        bg_token = torch.mode(white_indices).values.item()
 
-    target_fg_mask = (target_gt_tokens != bg_token)
-    total_fg = max(1, target_fg_mask.sum().item())
-
+    # Focal Shape Weighting
     loss_weights = torch.ones_like(batch_tgt, dtype=torch.float)
     for i, s in enumerate(batch_samples):
         indices = s["gt_tokens"].to(device)
         is_fg = (indices != bg_token)
         pos = s["img_pos"]
-        loss_weights[i, pos : pos + 256][is_fg] = 5.0  # 5x boost for the actual shape
+        loss_weights[i, pos : pos + 256][is_fg] = 5.0
 
     batch_inp = batch_inp.to(device)
     batch_tgt = batch_tgt.to(device)
     loss_weights = loss_weights.to(device)
 
-    print(f"[+] Canonical Target Prompt: \"{target_prompt}\"")
-    print(f"[+] Ground Truth Visual Codebook Tokens: 256 total ({total_fg} foreground shape tokens)")
+    print(f"[+] Total Joint Batch Samples : {B} (Covering {len(primary_targets)} Core Shapes)")
 
     # 4. Iterative Reinforcement Loop
-    print(f"\n[3/4] Reinforcing until shape reproduction is achieved ('Jab tak same na banaye tab tak learn')...")
+    print(f"\n[3/4] Reinforcing until simultaneous multi-shape mastery is achieved...")
     optimizer = torch.optim.AdamW(llm.parameters(), lr=lr, weight_decay=0.01)
     criterion_elem = nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
 
     start_time = time.time()
-    best_fg_match = 0.0
-    best_total_match = 0.0
     final_step = 0
-    pred_tokens_best = None
 
     for step in range(1, max_steps + 1):
         optimizer.zero_grad()
@@ -326,35 +333,45 @@ def train_reinforcement_mastery(
 
         final_step = step
 
-        # Evaluate Exact Token Match on Primary Target (Foreground + Total)
+        # Evaluate all primary targets simultaneously
+        all_mastered = True
+        scores_summary = []
+
         with torch.no_grad():
-            pred_visual = logits[0, target_img_pos : target_img_pos + 256].argmax(dim=-1) - 8000
-            matched = (pred_visual == target_gt_tokens).sum().item()
-            total_pct = (matched / 256.0) * 100.0
+            for tgt_info in primary_targets:
+                b_i = tgt_info["batch_idx"]
+                pos = tgt_info["img_pos"]
+                gt = tgt_info["gt_tokens"]
+                fg_mask = tgt_info["fg_mask"]
+                tot_fg = tgt_info["total_fg"]
 
-            fg_matched = (pred_visual[target_fg_mask] == target_gt_tokens[target_fg_mask]).sum().item()
-            fg_pct = (fg_matched / total_fg) * 100.0
+                pred_visual = logits[b_i, pos : pos + 256].argmax(dim=-1) - 8000
+                matched = (pred_visual == gt).sum().item()
+                tot_pct = (matched / 256.0) * 100.0
 
-        if fg_pct > best_fg_match or (fg_pct == best_fg_match and total_pct > best_total_match):
-            best_fg_match = fg_pct
-            best_total_match = total_pct
-            pred_tokens_best = pred_visual.detach().cpu().tolist()
+                fg_matched = (pred_visual[fg_mask] == gt[fg_mask]).sum().item()
+                fg_pct = (fg_matched / tot_fg) * 100.0
 
-        if target_acc >= 99.9:
-            is_mastered = (matched == 256)
-        else:
-            is_mastered = (total_pct >= target_acc and fg_pct >= 95.0)
+                if target_acc >= 99.9:
+                    is_p_mastered = (matched == 256)
+                else:
+                    is_p_mastered = (tot_pct >= target_acc and fg_pct >= 95.0)
 
-        status = "🎯 100% MASTERED!" if matched == 256 else ("🎯 MASTERED!" if is_mastered else f"REINFORCING (FG: {fg_pct:.0f}%)...")
-        if step % 2 == 0 or step == 1 or is_mastered or matched == 256:
-            print(f"  [Step {step:3d}/{max_steps}] Loss: {loss.item():.4f} | FG Shape: {fg_pct:5.1f}% ({fg_matched:2d}/{total_fg}) | Total: {total_pct:5.1f}% ({matched:3d}/256) | {status}")
+                if not is_p_mastered:
+                    all_mastered = False
 
-        # Stopping Condition: MUST master the actual foreground shape, not just background!
-        if is_mastered and loss.item() < 0.35:
+                short_key = tgt_info["lesson_key"].split("_")[-1].capitalize()
+                scores_summary.append(f"{short_key}: {fg_pct:.0f}%")
+
+        summary_str = " | ".join(scores_summary)
+        status = "🎯 100% ALL MASTERED!" if all_mastered else "REINFORCING..."
+
+        if step % 2 == 0 or step == 1 or all_mastered:
+            print(f"  [Step {step:3d}/{max_steps}] Loss: {loss.item():.4f} | {summary_str} | {status}")
+
+        if all_mastered and loss.item() < 0.35:
             elapsed = time.time() - start_time
-            print(f"\n[+] 🎯 SHAPE MASTERED IN {step} STEPS! ({elapsed:.1f}s)")
-            print(f"[+] Foreground Shape Accuracy : {fg_pct:.1f}% ({fg_matched}/{total_fg} tokens)")
-            print(f"[+] Overall Canvas Accuracy   : {total_pct:.1f}% ({matched}/256 tokens)")
+            print(f"\n[+] 🎯 ALL {len(primary_targets)} SHAPES SIMULTANEOUSLY MASTERED IN {step} STEPS! ({elapsed:.1f}s)")
             break
 
     # 5. Save Graduated Checkpoint
@@ -375,40 +392,12 @@ def train_reinforcement_mastery(
     ckpt["tokenizer_vocab"] = {"merges": tokenizer.merges}
     torch.save(ckpt, checkpoint_path)
 
-    # 5. Decode & Generate Side-by-Side Exam Card
-    print("\n[4/4] 🎓 TAKING VISUAL EXAMINATION (Aaya ya nahi test karte hain)...")
+    # 6. Run Final Examination
+    print("\n[4/4] 🎓 TAKING FINAL GRADUATION EXAMINATION...")
     llm.eval()
-    if pred_tokens_best is None:
-        pred_tokens_best = pred_visual.detach().cpu().tolist()
-
-    learned_img = decode_tokens_to_image(vqvae, pred_tokens_best, device=device)
-    refined_img = refine_geometry_from_prompt(learned_img, target_prompt)
-
-    exam_card = create_exam_card(
-        target_vector_img=target_img,
-        neural_img=learned_img,
-        refined_img=refined_img,
-        lesson_key=lesson_key,
-        prompt=target_prompt,
-        match_pct=best_total_match,
-        fg_pct=best_fg_match,
-        step=final_step,
-    )
-
-    exam_filename = f"exam_{lesson_key}.png"
-    exam_card.save(exam_filename)
-    refined_img.save(f"output_{lesson_key}.png")
-    learned_img.save(f"output_{lesson_key}_neural.png")
-
-    print(f"[+] 3-Panel Exam Card Saved     : {os.path.abspath(exam_filename)}")
-    print(f"[+] Crisp Vector Output Saved   : {os.path.abspath(f'output_{lesson_key}.png')}")
-    print(f"[+] Raw Neural Image Saved      : {os.path.abspath(f'output_{lesson_key}_neural.png')}")
-    print(f"[+] Best FG Shape Match Achieved : {best_fg_match:.1f}%")
-    print(f"[+] Best Total Match Achieved    : {best_total_match:.1f}%")
-    print(f"\n[💡] Colab Notebook me card dekhne ke liye next cell me run karein:")
-    print(f"     from IPython.display import Image, display; display(Image('{exam_filename}'))\n")
-
-    return exam_card
+    from evaluate_nursery_exam import run_graduation_exam
+    grad_sheet = run_graduation_exam(checkpoint_path=checkpoint_path, device=device)
+    return grad_sheet
 
 
 def main():
@@ -416,12 +405,12 @@ def main():
     parser.add_argument(
         "--lesson",
         type=str,
-        default="1_dot",
-        choices=["1_dot", "2_line", "3_circle", "4_square", "5_triangle"],
-        help="Nursery syllabus lesson to train",
+        default="all",
+        choices=["all", "1_dot", "2_line", "3_circle", "4_square", "5_triangle"],
+        help="Nursery syllabus lesson to train (default: 'all' for joint multi-task mastery)",
     )
-    parser.add_argument("--target_acc", type=float, default=100.0, help="Target token match threshold percentage (e.g. 98.0 or 100.0)")
-    parser.add_argument("--max_steps", type=int, default=100, help="Maximum reinforcement steps")
+    parser.add_argument("--target_acc", type=float, default=100.0, help="Target token match threshold percentage")
+    parser.add_argument("--max_steps", type=int, default=50, help="Maximum reinforcement steps")
     parser.add_argument("--lr", type=float, default=2.5e-4, help="Learning rate")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/multimodal_llm.pt", help="Checkpoint path")
     parser.add_argument("--device", type=str, default=None, help="Compute device (cuda / cpu)")
