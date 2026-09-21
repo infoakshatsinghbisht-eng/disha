@@ -258,8 +258,19 @@ def train_lesson(
     # Save Updated Checkpoint
     print(f"\n[+] Saving graduated model weights to: {checkpoint_path}")
     os.makedirs(os.path.dirname(os.path.abspath(checkpoint_path)), exist_ok=True)
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    if os.path.exists(checkpoint_path):
+        try:
+            ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        except Exception:
+            ckpt = {}
+    else:
+        ckpt = {}
+
+    ckpt["llm_config"] = LLMConfig()
+    ckpt["vqvae_config"] = VQVAEConfig()
     ckpt["llm_state_dict"] = llm.state_dict()
+    ckpt["vqvae_state_dict"] = vqvae.state_dict()
+    ckpt["tokenizer_vocab"] = {"merges": tokenizer.merges}
     torch.save(ckpt, checkpoint_path)
 
     # 4. Immediate Visual Exam

@@ -41,16 +41,49 @@ class MultimodalGeneratorPipeline:
         checkpoint_path: str,
         device: Union[str, torch.device] = "cpu",
     ) -> "MultimodalGeneratorPipeline":
-        """Loads model weights and tokenizers from a checkpoint file."""
-        ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        
-        tokenizer = ByteTokenizer()
-        if "tokenizer_vocab" in ckpt:
-            # Reconstruct merges if saved
-            tokenizer.merges = ckpt["tokenizer_vocab"].get("merges", {})
+        # Search candidate paths across nested directories (e.g. Colab /content/disha, /content/disha/disha)
+        candidate_paths = [
+            checkpoint_path,
+            os.path.join(os.getcwd(), checkpoint_path),
+            os.path.join("..", checkpoint_path),
+            os.path.join("../..", checkpoint_path),
+            os.path.join("/content/disha", checkpoint_path),
+            os.path.join("/content/disha/disha", checkpoint_path),
+            os.path.join("/content", checkpoint_path),
+            "/content/disha/checkpoints/multimodal_llm.pt",
+            "/content/disha/disha/checkpoints/multimodal_llm.pt",
+            "/content/checkpoints/multimodal_llm.pt",
+        ]
+        resolved_path = None
+        for cand in candidate_paths:
+            if cand and os.path.exists(cand):
+                resolved_path = cand
+                break
 
-        llm_cfg = ckpt.get("llm_config", LLMConfig())
-        vq_cfg = ckpt.get("vqvae_config", VQVAEConfig())
+        if resolved_path is None:
+            import glob
+            matches = glob.glob("**/multimodal_llm.pt", recursive=True) + glob.glob("/content/**/multimodal_llm.pt", recursive=True)
+            if matches:
+                resolved_path = matches[0]
+
+        tokenizer = ByteTokenizer()
+        llm_cfg = LLMConfig()
+        vq_cfg = VQVAEConfig()
+        ckpt = {}
+
+        if resolved_path and os.path.exists(resolved_path):
+            print(f"[+] Loading foundation checkpoint from: {os.path.abspath(resolved_path)}")
+            try:
+                ckpt = torch.load(resolved_path, map_location=device, weights_only=False)
+                if "tokenizer_vocab" in ckpt:
+                    tokenizer.merges = ckpt["tokenizer_vocab"].get("merges", {})
+                llm_cfg = ckpt.get("llm_config", LLMConfig())
+                vq_cfg = ckpt.get("vqvae_config", VQVAEConfig())
+            except Exception as e:
+                print(f"[!] Error reading {resolved_path}: {e}")
+                ckpt = {}
+        else:
+            print(f"[!] Checkpoint '{checkpoint_path}' not found. Initializing fresh model for baby-steps training...")
 
         total_vocab_size = getattr(llm_cfg, "text_vocab_size", 8000) + getattr(llm_cfg, "image_vocab_size", 2048) + len(tokenizer.SPECIAL_TOKENS)
 
@@ -68,7 +101,6 @@ class MultimodalGeneratorPipeline:
         )
         if "llm_state_dict" in ckpt:
             state_dict = dict(ckpt["llm_state_dict"])
-            # Gracefully handle vocabulary expansion (e.g. newly added agentic tokens)
             model_sd = llm.state_dict()
             for key in ["tok_embeddings.weight", "output.weight"]:
                 if key in state_dict and key in model_sd:
@@ -92,6 +124,24 @@ class MultimodalGeneratorPipeline:
         )
         if "vqvae_state_dict" in ckpt:
             vqvae.load_state_dict(ckpt["vqvae_state_dict"])
+        else:
+            # Search candidate paths for standalone vqvae.pt
+            for vq_cand in [
+                "checkpoints/vqvae.pt",
+                "/content/disha/checkpoints/vqvae.pt",
+                "/content/disha/disha/checkpoints/vqvae.pt",
+                "/content/checkpoints/vqvae.pt",
+                "../checkpoints/vqvae.pt",
+            ]:
+                if os.path.exists(vq_cand):
+                    try:
+                        vq_ckpt = torch.load(vq_cand, map_location=device, weights_only=False)
+                        sd = vq_ckpt["vqvae_state_dict"] if "vqvae_state_dict" in vq_ckpt else vq_ckpt
+                        vqvae.load_state_dict(sd)
+                        print(f"[+] Loaded pretrained VQ-VAE tokenizer from: {vq_cand}")
+                        break
+                    except Exception:
+                        pass
 
         return cls(
             llm=llm,
